@@ -4,6 +4,8 @@ A PDF reader for Windows 11 that renders with PDFium and draws its own interface
 
 This is the native rewrite of the Tauri and pdf.js version. Reading, searching, bookmarks, printing and basic annotation are built. Form filling and signatures are not.
 
+This project is 100% vibe coded with Claude Code, made for personal use. I am happy to share it, and you are welcome to fork it.
+
 ## What works now
 
 - **Tabs in the title bar**, next to Windows 11 style minimize, maximize and close buttons. Hovering maximize opens Snap Layouts. Each tab keeps its own zoom, page and rotation. Background tabs let go of their page images.
