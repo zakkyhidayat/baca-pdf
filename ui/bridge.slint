@@ -50,6 +50,8 @@ export struct TabInfo {
     busy: bool,
     failed: bool,
     favorite: bool,
+    // Shown in split view, beside another tab.
+    paired: bool,
 }
 
 export struct RecentItem {
@@ -90,6 +92,18 @@ export global Bridge {
     in property <bool> can-zoom-in: true;
     in property <bool> can-zoom-out: true;
     in property <[PageView]> pages;
+    // The second pane of split view; the first pane uses the properties without a suffix.
+    in property <[PageView]> pages-b;
+    in-out property <length> view-x-b;
+    in-out property <length> view-y-b;
+    in property <length> content-width-b;
+    in property <length> content-height-b;
+    in-out property <length> viewport-width-b;
+    in-out property <length> viewport-height-b;
+    in property <bool> split-active;
+    // Which pane has the toolbar, the side panel and the keyboard: 0 left, 1 right.
+    in property <int> focus-side;
+    in-out property <float> split-ratio: 0.5;
     in property <length> content-width;
     in property <length> content-height;
     in-out property <length> view-x;
@@ -255,6 +269,14 @@ export global Bridge {
     callback select-at(int, length, length);
     callback submit-password(string);
     callback link-click(length, length);
+    callback move-tab(int, int);
+    callback move-tab-by(int);
+    callback reopen-closed-tab();
+    callback split-tabs(int, int);
+    callback split-with(int);
+    callback focus-pane(int);
+    callback exit-split();
+    callback toggle-split();
     callback page-menu-prepare(length, length);
     callback thumb-menu-prepare(int);
     callback toggle-bookmark-page(int);

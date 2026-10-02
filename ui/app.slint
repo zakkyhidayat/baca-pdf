@@ -6,7 +6,7 @@ import { IconButton, Flyout } from "controls.slint";
 import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow } from "bridge.slint";
 import { TitleBar } from "titlebar.slint";
 import { Toolbar, FindFlyout } from "toolbar.slint";
-import { Sidebar, PageArea } from "viewer.slint";
+import { Sidebar, PageArea, SplitDivider } from "viewer.slint";
 import { Home } from "home.slint";
 import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
 
@@ -90,10 +90,29 @@ export component AppWindow inherits Window {
             }
             if (event.modifiers.control) {
                 if (event.text == "o" || event.text == "O") { Bridge.open-file(); return accept; }
+                if (event.modifiers.shift && (event.text == "t" || event.text == "T")) { Bridge.reopen-closed-tab(); return accept; }
                 if (event.text == "t" || event.text == "T") { Bridge.select-tab(-1); return accept; }
+                if (event.text == Key.PageUp || event.text == Key.PageDown) {
+                    if (event.modifiers.shift) {
+                        Bridge.move-tab-by(event.text == Key.PageUp ? -1 : 1);
+                    } else {
+                        Bridge.cycle-tab(event.text == Key.PageUp ? -1 : 1);
+                    }
+                    return accept;
+                }
+                if (event.text == "1") { Bridge.select-tab(0); return accept; }
+                if (event.text == "2") { Bridge.select-tab(1); return accept; }
+                if (event.text == "3") { Bridge.select-tab(2); return accept; }
+                if (event.text == "4") { Bridge.select-tab(3); return accept; }
+                if (event.text == "5") { Bridge.select-tab(4); return accept; }
+                if (event.text == "6") { Bridge.select-tab(5); return accept; }
+                if (event.text == "7") { Bridge.select-tab(6); return accept; }
+                if (event.text == "8") { Bridge.select-tab(7); return accept; }
+                if (event.text == "9") { Bridge.select-tab(Bridge.tabs.length - 1); return accept; }
                 if (event.text == "w" || event.text == "W" || event.text == Key.F4) { Bridge.close-active-tab(); return accept; }
                 if (event.text == Key.Tab || event.text == Key.Backtab) { Bridge.cycle-tab(event.modifiers.shift ? -1 : 1); return accept; }
                 if (event.text == "d" || event.text == "D") { Bridge.tab-favorite(Bridge.active-tab); return accept; }
+                if (event.text == "\\") { Bridge.toggle-split(); return accept; }
                 if (Bridge.state != DocState.ready) { return reject; }
                 if (event.text == "f" || event.text == "F") { root.open-find(); return accept; }
                 if (event.text == "c" || event.text == "C") { root.copy(); return accept; }
@@ -149,7 +168,29 @@ export component AppWindow inherits Window {
                     width: self.visible ? max(Bridge.sidebar-width, Metrics.touch ? 240px : 0px) : 0px;
                 }
                 PageArea {
-                    horizontal-stretch: 1;
+                    side: 0;
+                    horizontal-stretch: Bridge.split-active ? Bridge.split-ratio * 1000 : 1;
+                    pages: Bridge.pages;
+                    view-x <=> Bridge.view-x;
+                    view-y <=> Bridge.view-y;
+                    content-width: Bridge.content-width;
+                    content-height: Bridge.content-height;
+                    viewport-width <=> Bridge.viewport-width;
+                    viewport-height <=> Bridge.viewport-height;
+                    focus-document => { keys.focus(); }
+                    copy => { root.copy(); }
+                }
+                if Bridge.split-active: SplitDivider { }
+                if Bridge.split-active: PageArea {
+                    side: 1;
+                    horizontal-stretch: (1 - Bridge.split-ratio) * 1000;
+                    pages: Bridge.pages-b;
+                    view-x <=> Bridge.view-x-b;
+                    view-y <=> Bridge.view-y-b;
+                    content-width: Bridge.content-width-b;
+                    content-height: Bridge.content-height-b;
+                    viewport-width <=> Bridge.viewport-width-b;
+                    viewport-height <=> Bridge.viewport-height-b;
                     focus-document => { keys.focus(); }
                     copy => { root.copy(); }
                 }

@@ -143,7 +143,8 @@ pub struct SelectJob {
 struct Inbox {
     open: VecDeque<(u64, PathBuf, Option<String>)>,
     close: Vec<u64>,
-    wanted: Vec<Request>,
+    /// One queue per pane of split view.
+    wanted: [Vec<Request>; 2],
     thumbs: Vec<Request>,
     search: Option<SearchJob>,
     select: Option<SelectJob>,
@@ -157,7 +158,7 @@ impl Inbox {
     fn idle(&self) -> bool {
         self.open.is_empty()
             && self.close.is_empty()
-            && self.wanted.is_empty()
+            && self.wanted.iter().all(|w| w.is_empty())
             && self.thumbs.is_empty()
             && self.search.is_none()
             && self.select.is_none()
@@ -197,7 +198,7 @@ impl Renderer {
     pub fn close(&self, doc: u64) {
         self.update(|inbox| {
             inbox.open.retain(|(d, _, _)| *d != doc);
-            inbox.wanted.retain(|r| r.doc != doc);
+            inbox.wanted.iter_mut().for_each(|w| w.retain(|r| r.doc != doc));
             inbox.thumbs.retain(|r| r.doc != doc);
             if inbox.search.as_ref().is_some_and(|s| s.doc == doc) {
                 inbox.search = None;
@@ -207,11 +208,12 @@ impl Renderer {
     }
 
     /// Replaces the page queue; the first entry is rendered first.
-    pub fn want(&self, wanted: Vec<Request>) {
+    pub fn want(&self, pane: usize, wanted: Vec<Request>) {
         let (lock, wake) = &*self.inbox;
         let mut inbox = lock.lock().unwrap();
-        if inbox.wanted != wanted {
-            inbox.wanted = wanted;
+        let pane = pane.min(1);
+        if inbox.wanted[pane] != wanted {
+            inbox.wanted[pane] = wanted;
             wake.notify_one();
         }
     }
@@ -300,8 +302,8 @@ fn next_job(inbox: &mut Inbox) -> Job {
     if let Some(job) = inbox.print.take() {
         return Job::Print(job);
     }
-    if !inbox.wanted.is_empty() {
-        return Job::Render(inbox.wanted.remove(0));
+    if let Some(w) = inbox.wanted.iter_mut().find(|w| !w.is_empty()) {
+        return Job::Render(w.remove(0));
     }
     if !inbox.thumbs.is_empty() {
         return Job::Render(inbox.thumbs.remove(0));

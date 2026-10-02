@@ -55,7 +55,7 @@ impl Viewer {
     }
 
     /// Saves the reading position of the active tab and releases its bitmaps.
-    fn park_active(&mut self, ui: &AppWindow) {
+    pub(crate) fn park_active(&mut self, ui: &AppWindow) {
         let Some(a) = self.active else { return };
         let spot = self.current_spot(ui);
         let doc = self.doc.take();
@@ -75,6 +75,19 @@ impl Viewer {
     pub(crate) fn activate(&mut self, ui: &AppWindow, index: Option<usize>) {
         if self.active.is_some() && self.active == index {
             return;
+        }
+        if let Some(split) = &self.split {
+            match index {
+                Some(i) if self.tabs.get(i).is_some_and(|t| t.id == split.pane.tab) => {
+                    self.swap_focus(ui);
+                    return;
+                }
+                None => self.exit_split(ui),
+                _ => {}
+            }
+            if self.active.is_some() && self.active == index {
+                return;
+            }
         }
         if self.presenting.is_some() {
             self.toggle_presentation(ui);
@@ -137,6 +150,9 @@ impl Viewer {
         if index >= self.tabs.len() {
             return;
         }
+        if self.split.is_some() && self.in_split(self.tabs[index].id) {
+            self.exit_split(ui);
+        }
         let was_active = self.active == Some(index);
         if was_active {
             self.park_active(ui);
@@ -144,6 +160,10 @@ impl Viewer {
         }
         let tab = self.tabs.remove(index);
         self.renderer.close(tab.id);
+        self.closed.push((tab.path.clone(), tab.spot.page + 1));
+        if self.closed.len() > 20 {
+            self.closed.remove(0);
+        }
         let next = match self.active {
             Some(a) if a > index => Some(a - 1),
             Some(a) => Some(a),
@@ -158,6 +178,7 @@ impl Viewer {
         if keep >= self.tabs.len() {
             return;
         }
+        self.exit_split(ui);
         self.activate(ui, Some(keep));
         self.park_active(ui);
         let kept = self.tabs.remove(keep);
@@ -167,6 +188,34 @@ impl Viewer {
         self.tabs.push(kept);
         self.active = None;
         self.activate(ui, Some(0));
+    }
+
+    /// Moves a tab to another place in the strip, keeping the same tab in front.
+    pub(crate) fn move_tab(&mut self, ui: &AppWindow, from: usize, to: usize) {
+        if from >= self.tabs.len() || to >= self.tabs.len() || from == to {
+            return;
+        }
+        let front = self.active.map(|a| self.tabs[a].id);
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = front.and_then(|id| self.tabs.iter().position(|t| t.id == id));
+        self.sync_ui(ui);
+        self.save_session(ui);
+    }
+
+    /// Ctrl+Shift+PageUp and Ctrl+Shift+PageDown.
+    pub(crate) fn move_active_tab(&mut self, ui: &AppWindow, step: i32) {
+        let Some(a) = self.active else { return };
+        let to = (a as i32 + step).clamp(0, self.tabs.len() as i32 - 1) as usize;
+        self.move_tab(ui, a, to);
+    }
+
+    /// Ctrl+Shift+T: the tab closed last comes back where it was reading.
+    pub(crate) fn reopen_closed_tab(&mut self, ui: &AppWindow) {
+        match self.closed.pop() {
+            Some((path, page)) => self.open_at(ui, path, Some(page)),
+            None => self.notify(ui, "There is no closed tab to reopen."),
+        }
     }
 
     pub(crate) fn cycle_tab(&mut self, ui: &AppWindow, step: i32) {
@@ -196,7 +245,7 @@ impl Viewer {
                 }
                 return;
             }
-            Event::Rendered { req, pixels } => return self.on_rendered(ui, req, pixels),
+            Event::Rendered { req, pixels } => return self.route_rendered(ui, req, pixels),
             Event::SearchHits { doc, generation, page, hits } if Some(doc) == current => {
                 return self.on_search_hits(ui, generation, page, hits);
             }
@@ -208,7 +257,7 @@ impl Viewer {
             Event::Link { doc, target } if Some(doc) == current => return self.on_link(ui, target),
             Event::Printed { pages, message } => return self.on_printed(ui, pages, message),
             Event::SearchHits { .. } | Event::SearchDone { .. } | Event::Selected { .. } | Event::Link { .. } | Event::Properties { .. } => return,
-            Event::Annotated { doc, pages, message } => return self.on_annotated(ui, doc, pages, message),
+            Event::Annotated { doc, pages, message } => return self.route_annotated(ui, doc, pages, message),
             Event::PageText { doc, text } if Some(doc) == current => return self.on_page_text(ui, text),
             Event::PageText { .. } => return,
             Event::Saved { doc, path, token, error } => return self.on_saved(ui, doc, path, token, error),
@@ -254,6 +303,7 @@ impl Viewer {
                 busy: matches!(t.status, Status::Loading),
                 failed: matches!(t.status, Status::Failed(_)),
                 favorite: self.is_favorite(&t.path),
+                paired: self.in_split(t.id),
             })
             .collect();
         self.tab_model.set_vec(infos);
@@ -398,11 +448,22 @@ impl Viewer {
     }
 
     pub(crate) fn save_session(&mut self, ui: &AppWindow) {
+        let mut other: Option<(u64, Spot, Zoom, u8)> = None;
+        if let Some(id) = self.split.as_ref().map(|s| s.pane.tab) {
+            self.in_other_pane(ui, |s, ui| {
+                if let Some(spot) = s.current_spot(ui) {
+                    other = Some((id, spot, s.zoom, s.turns));
+                }
+            });
+        }
         let tabs = self
             .tabs
             .iter()
             .enumerate()
             .map(|(i, t)| {
+                if let Some((_, spot, zoom, turns)) = other.filter(|o| o.0 == t.id) {
+                    return SessionTab { path: t.path.clone(), spot, zoom, turns };
+                }
                 let live = self.active == Some(i) && self.doc.is_some();
                 SessionTab {
                     path: t.path.clone(),
@@ -428,6 +489,7 @@ impl Viewer {
 
     /// Called when the window closes: remember positions in the session, the recent list and the settings.
     pub(crate) fn save_all(&mut self, ui: &AppWindow) {
+        self.exit_split(ui);
         if self.presenting.is_some() {
             self.toggle_presentation(ui);
         }
@@ -468,6 +530,9 @@ impl Viewer {
             })
             .map(|(i, _)| i)
             .collect();
+        if self.split.is_some() && changed.iter().any(|&i| self.in_split(self.tabs[i].id)) {
+            self.exit_split(ui);
+        }
         for i in changed {
             let active = self.active == Some(i);
             if active {

@@ -3,7 +3,7 @@
 import { ScrollView, ListView } from "std-widgets.slint";
 import { Theme, Metrics, Glyph } from "theme.slint";
 import { IconButton, PrimaryButton, Flyout, MenuItem } from "controls.slint";
-import { Bridge, DocState, ThumbView, OutlineRow } from "bridge.slint";
+import { Bridge, DocState, PageView, ThumbView, OutlineRow } from "bridge.slint";
 
 component ThumbItem {
     in property <ThumbView> item;
@@ -363,11 +363,23 @@ export component PageArea inherits Rectangle {
     callback copy();
     property <length> menu-x;
     property <length> menu-y;
+    // Which pane this is and what it shows: the first pane reads the plain Bridge properties, the
+    // second one the ones ending in -b.
+    in property <int> side;
+    in property <[PageView]> pages;
+    in-out property <length> view-x;
+    in-out property <length> view-y;
+    in property <length> content-width;
+    in property <length> content-height;
+    in-out property <length> viewport-width;
+    in-out property <length> viewport-height;
+    property <bool> is-focus: !Bridge.split-active || Bridge.focus-side == root.side;
+    property <bool> ready: root.is-focus ? Bridge.state == DocState.ready : true;
 
     background: Bridge.presenting ? black : Theme.body;
     property <brush> paper: Bridge.page-tone == 1 ? #1b1b1b : Bridge.page-tone == 2 ? #f4ecd8 : white;
 
-    if Bridge.state == DocState.loading || Bridge.state == DocState.failed: VerticalLayout {
+    if root.is-focus && (Bridge.state == DocState.loading || Bridge.state == DocState.failed): VerticalLayout {
         alignment: center;
         spacing: 12px;
         padding: 24px;
@@ -446,8 +458,8 @@ export component PageArea inherits Rectangle {
     }
 
     ScaleRotateGestureHandler {
-        visible: Bridge.state == DocState.ready;
-        enabled: Bridge.state == DocState.ready;
+        visible: root.ready;
+        enabled: root.ready;
         started => { Bridge.pinch-started(); }
         updated => { Bridge.pinch-updated(self.scale, self.center.x, self.center.y); }
         ended => { Bridge.pinch-ended(); }
@@ -456,29 +468,29 @@ export component PageArea inherits Rectangle {
         scroller := ScrollView {
             width: parent.width;
             height: parent.height;
-            content-width: max(Bridge.content-width, self.visible-width);
-            content-height: max(Bridge.content-height, self.visible-height);
-            content-x <=> Bridge.view-x;
-            content-y <=> Bridge.view-y;
+            content-width: max(root.content-width, self.visible-width);
+            content-height: max(root.content-height, self.visible-height);
+            content-x <=> root.view-x;
+            content-y <=> root.view-y;
             mouse-drag-pan-enabled: Bridge.hand-tool;
             vertical-scrollbar-policy: Bridge.presenting ? ScrollBarPolicy.always-off : ScrollBarPolicy.as-needed;
             horizontal-scrollbar-policy: Bridge.presenting ? ScrollBarPolicy.always-off : ScrollBarPolicy.as-needed;
             changed content-x => { Bridge.viewport-changed(); }
             changed content-y => { Bridge.viewport-changed(); }
             changed visible-width => {
-                Bridge.viewport-width = self.visible-width;
+                root.viewport-width = self.visible-width;
                 Bridge.viewport-changed();
             }
             changed visible-height => {
-                Bridge.viewport-height = self.visible-height;
+                root.viewport-height = self.visible-height;
                 Bridge.viewport-changed();
             }
             init => {
-                Bridge.viewport-width = self.visible-width;
-                Bridge.viewport-height = self.visible-height;
+                root.viewport-width = self.visible-width;
+                root.viewport-height = self.visible-height;
             }
 
-            for p in Bridge.pages: Rectangle {
+            for p in root.pages: Rectangle {
                 x: p.x;
                 y: p.y;
                 width: p.width;
@@ -543,14 +555,16 @@ export component PageArea inherits Rectangle {
                 property <length> down-x;
                 property <length> down-y;
                 pointer-event(event) => {
+                    // A click on the pane that is not in front first brings it to the front.
+                    if (!root.is-focus && event.kind == PointerEventKind.down) { Bridge.focus-pane(root.side); }
                     if (event.touch-finger-id != 0 && Bridge.tool == 0) {
                         if (event.kind == PointerEventKind.down) { Metrics.touch = true; }
                         return;
                     }
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
                         Bridge.page-menu-prepare(self.mouse-x, self.mouse-y);
-                        root.menu-x = self.mouse-x + Bridge.view-x;
-                        root.menu-y = self.mouse-y + Bridge.view-y;
+                        root.menu-x = self.mouse-x + root.view-x;
+                        root.menu-y = self.mouse-y + root.view-y;
                         page-menu.show();
                         return;
                     }
@@ -593,11 +607,12 @@ export component PageArea inherits Rectangle {
                     if (self.drawing) { Bridge.stroke-point(self.mouse-x, self.mouse-y); }
                 }
                 double-clicked => {
-                    Bridge.zoom-toggle(self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
+                    Bridge.zoom-toggle(self.mouse-x + root.view-x, self.mouse-y + root.view-y);
                 }
                 scroll-event(event) => {
+                    if (!root.is-focus) { Bridge.focus-pane(root.side); }
                     if (event.modifiers.control && event.delta-y != 0) {
-                        Bridge.zoom-by(event.delta-y / 1px, self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
+                        Bridge.zoom-by(event.delta-y / 1px, self.mouse-x + root.view-x, self.mouse-y + root.view-y);
                         return accept;
                     }
                     if (Bridge.scroll-wheel(event.delta-y)) { return accept; }
@@ -606,7 +621,7 @@ export component PageArea inherits Rectangle {
             }
 
             // The line being drawn, before it becomes part of the page.
-            if Bridge.stroke-path != "": Path {
+            if root.is-focus && Bridge.stroke-path != "": Path {
                 x: Bridge.stroke-x;
                 y: Bridge.stroke-y;
                 width: Bridge.stroke-w;
@@ -625,7 +640,7 @@ export component PageArea inherits Rectangle {
             }
 
             // Where text is typed before it is placed on the page.
-            if Bridge.text-open: Rectangle {
+            if root.is-focus && Bridge.text-open: Rectangle {
                 x: Bridge.text-x;
                 y: Bridge.text-y;
                 width: max(140px, typed.preferred-width + 20px);
@@ -675,7 +690,7 @@ export component PageArea inherits Rectangle {
         }
     }
 
-    if Bridge.has-selection && Bridge.notice == "" && !Bridge.presenting: Flyout {
+    if root.is-focus && Bridge.has-selection && Bridge.notice == "" && !Bridge.presenting: Flyout {
         x: (parent.width - self.width) / 2;
         y: parent.height - self.height - 24px;
         width: copy-row.preferred-width;
@@ -692,5 +707,34 @@ export component PageArea inherits Rectangle {
                 clicked => { Bridge.clear-selection(); }
             }
         }
+    }
+
+    // In split view, the pane that has the toolbar and the keyboard has a line along its top.
+    if Bridge.split-active && Bridge.focus-side == root.side: Rectangle {
+        y: 0;
+        height: 2px;
+        background: Theme.accent;
+    }
+}
+
+// The line between the two panes of split view: drag it to give one pane more room, double-click for
+// equal halves.
+export component SplitDivider inherits Rectangle {
+    width: 7px;
+    background: Theme.sidebar;
+    accessible-role: none;
+    Rectangle {
+        x: 3px;
+        width: 1px;
+        background: Theme.toolbar-border;
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.col-resize;
+        moved => {
+            if (self.pressed) {
+                Bridge.split-ratio = clamp(Bridge.split-ratio + (self.mouse-x - 3px) / (Bridge.viewport-width + Bridge.viewport-width-b), 0.25, 0.75);
+            }
+        }
+        double-clicked => { Bridge.split-ratio = 0.5; }
     }
 }

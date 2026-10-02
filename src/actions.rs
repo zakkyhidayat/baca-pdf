@@ -46,6 +46,7 @@ impl Viewer {
                 self.set_zoom(ui, saved.zoom);
             }
             None => {
+                self.exit_split(ui);
                 if self.doc.is_none() {
                     return;
                 }

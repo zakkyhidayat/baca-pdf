@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Spinner } from "std-widgets.slint";
-import { Theme, Metrics, Glyph } from "theme.slint";
+import { Theme, Metrics, Glyph, Tip } from "theme.slint";
 import { IconButton, MenuItem, MenuRule, Flyout } from "controls.slint";
 import { Bridge, TabInfo } from "bridge.slint";
 
@@ -67,8 +67,17 @@ component TabItem {
     callback activate;
     callback close;
     callback menu(length, length);
+    // Dragging: where in the tab it was grabbed, where the pointer is now, and the release.
+    in property <bool> dragging;
+    in property <bool> hinted;
+    callback drag-begin(length);
+    callback drag-moved(length);
+    callback drag-ended();
+    // Ctrl+click: open this tab beside the front one.
+    callback ctrl-click();
 
     height: Metrics.tab-height;
+    opacity: root.dragging ? 0.4 : 1;
     accessible-role: tab;
     accessible-label: root.info.title;
     accessible-description: root.info.path;
@@ -80,9 +89,19 @@ component TabItem {
     Rectangle {
         border-top-left-radius: 8px;
         border-top-right-radius: 8px;
-        background: root.selected ? Theme.surface : area.has-hover ? Theme.hover : transparent;
-        border-width: focus.has-focus ? 2px : 0px;
-        border-color: Theme.focus;
+        background: root.hinted ? Theme.accent.with-alpha(0.25) : root.selected ? Theme.surface : area.has-hover ? Theme.hover : transparent;
+        border-width: root.hinted || focus.has-focus ? 2px : 0px;
+        border-color: root.hinted ? Theme.accent : Theme.focus;
+    }
+    // Tabs shown side by side in split view carry a line along their bottom.
+    Rectangle {
+        visible: root.info.paired;
+        x: 10px;
+        y: parent.height - 3px;
+        width: parent.width - 20px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Theme.accent;
     }
     Rectangle {
         visible: root.divider;
@@ -93,8 +112,35 @@ component TabItem {
         background: Theme.divider;
     }
     area := TouchArea {
-        clicked => { root.activate(); }
+        property <bool> began;
+        property <bool> far;
+        property <bool> ctrl;
+        property <length> down-x;
+        clicked => {
+            if (self.far) { return; }
+            if (self.ctrl) { root.ctrl-click(); } else { root.activate(); }
+        }
+        moved => {
+            if (self.pressed) {
+                if (!self.began && abs(self.mouse-x - self.down-x) > 8px) {
+                    self.began = true;
+                    self.far = true;
+                    root.drag-begin(self.down-x);
+                }
+                if (self.began) { root.drag-moved(self.mouse-x); }
+            }
+        }
         pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                self.down-x = self.mouse-x;
+                self.began = false;
+                self.far = false;
+                self.ctrl = event.modifiers.control;
+            }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && self.began) {
+                self.began = false;
+                root.drag-ended();
+            }
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
                 root.close();
             }
@@ -208,8 +254,66 @@ export component TitleBar inherits Rectangle {
     property <length> plus-x: root.strip-x + root.strip-width + (root.overflowing ? 28px : 0px) + 4px;
 
     // Everything right of the + button, up to the caption buttons, moves the window.
-    changed height => { Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px); }
-    changed plus-x => { Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px); }
+    // The values are also kept in Bridge: the program reads them once when it takes over the caption,
+    // and a stale copy there would put the drag area over the tabs.
+    changed height => {
+        Bridge.strip-height = self.height;
+        Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px);
+    }
+    // Dragging a tab: the pointer's place along the strip decides where it would land, or, after
+    // resting over the middle of another tab, that it would open beside that tab.
+    property <int> drag-index: -1;
+    property <length> drag-grab;
+    property <length> drag-pos;
+    property <int> gap: clamp(floor(root.drag-pos / root.tab-width + 0.5), 0, root.count);
+    property <int> hover-tab: clamp(floor(root.drag-pos / root.tab-width), 0, root.count - 1);
+    property <int> candidate: (root.drag-index >= 0 && root.hover-tab != root.drag-index
+        && abs(root.drag-pos - (root.hover-tab + 0.5) * root.tab-width) < 0.25 * root.tab-width) ? root.hover-tab : -1;
+    property <int> hint-tab: -1;
+    changed candidate => {
+        root.hint-tab = -1;
+        Tip.on = false;
+    }
+    Timer {
+        interval: 700ms;
+        running: root.candidate >= 0 && root.hint-tab < 0;
+        triggered => {
+            root.hint-tab = root.candidate;
+            Tip.text = "Drop here to split view";
+            Tip.x = root.strip-x + (root.hint-tab + 0.5) * root.tab-width + strip.content-x;
+            Tip.y = root.height + 4px;
+            Tip.on = true;
+        }
+    }
+    function finish-drag() {
+        if (root.hint-tab >= 0) {
+            Bridge.split-tabs(root.drag-index, root.hint-tab);
+        } else {
+            Bridge.move-tab(root.drag-index, root.gap > root.drag-index ? root.gap - 1 : root.gap);
+        }
+        Tip.on = false;
+        root.hint-tab = -1;
+        root.drag-index = -1;
+    }
+
+    // With more tabs than fit, the front tab is always scrolled into view.
+    property <int> front: Bridge.active-tab;
+    function reveal-front() {
+        if (root.overflowing && root.front >= 0) {
+            if (root.front * root.tab-width < -strip.content-x) {
+                strip.content-x = -(root.front * root.tab-width);
+            } else if ((root.front + 1) * root.tab-width > -strip.content-x + strip.width) {
+                strip.content-x = -((root.front + 1) * root.tab-width - strip.width);
+            }
+        }
+    }
+    changed front => { root.reveal-front(); }
+    changed count => { root.reveal-front(); }
+    changed room => { root.reveal-front(); }
+    changed plus-x => {
+        Bridge.drag-from = root.plus-x + 32px + 4px;
+        Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px);
+    }
     init => {
         Bridge.strip-height = self.height;
         Bridge.drag-from = root.plus-x + 32px + 4px;
@@ -241,6 +345,37 @@ export component TitleBar inherits Rectangle {
         height: Metrics.tab-height;
         content-width: root.count * root.tab-width;
         interactive: false;
+        // The tab as it follows the pointer.
+        if root.drag-index >= 0: Rectangle {
+            x: clamp(root.drag-pos - root.drag-grab, 0px, max(0px, root.count * root.tab-width - root.tab-width));
+            y: 0;
+            width: root.tab-width;
+            height: Metrics.tab-height;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            background: Theme.surface;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000040;
+            Text {
+                x: 12px;
+                width: parent.width - 24px;
+                height: parent.height;
+                text: Bridge.tabs[root.drag-index].title;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+                color: Theme.text;
+                accessible-role: none;
+            }
+        }
+        // Where the tab would be dropped.
+        if root.drag-index >= 0 && root.hint-tab < 0 && root.gap != root.drag-index && root.gap != root.drag-index + 1: Rectangle {
+            x: root.gap * root.tab-width - 1px;
+            y: 4px;
+            width: 2px;
+            height: Metrics.tab-height - 8px;
+            background: Theme.accent;
+        }
         for tab[i] in Bridge.tabs: TabItem {
             x: i * root.tab-width;
             y: 0;
@@ -248,6 +383,16 @@ export component TitleBar inherits Rectangle {
             info: tab;
             selected: Bridge.active-tab == i;
             divider: i > 0 && Bridge.active-tab != i && Bridge.active-tab != i - 1;
+            dragging: root.drag-index == i;
+            hinted: root.hint-tab == i;
+            drag-begin(grab) => {
+                root.drag-grab = grab;
+                root.drag-pos = i * root.tab-width + grab;
+                root.drag-index = i;
+            }
+            drag-moved(mx) => { root.drag-pos = i * root.tab-width + mx; }
+            drag-ended => { root.finish-drag(); }
+            ctrl-click => { Bridge.split-with(i); }
             activate => { Bridge.select-tab(i); }
             close => { Bridge.close-tab(i); }
             menu(mx, my) => {
@@ -337,6 +482,19 @@ export component TitleBar inherits Rectangle {
                     label: "Close other tabs";
                     enabled: root.count > 1;
                     clicked => { Bridge.close-other-tabs(root.menu-index); }
+                }
+                MenuRule { }
+                MenuItem {
+                    label: "Open in split view";
+                    hint: "Ctrl+click";
+                    enabled: Bridge.active-tab >= 0 && Bridge.active-tab != root.menu-index && root.count > 1;
+                    clicked => { Bridge.split-with(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Leave split view";
+                    hint: "Ctrl+\\";
+                    enabled: Bridge.split-active;
+                    clicked => { Bridge.exit-split(); }
                 }
                 MenuRule { }
                 MenuItem {

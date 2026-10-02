@@ -7,6 +7,7 @@ mod find;
 mod platform;
 mod render;
 mod single;
+mod split;
 mod sidebar;
 mod store;
 mod tabs;
@@ -90,6 +91,8 @@ struct Viewer {
     save_continue: Option<u64>,
     token: u64,
     speaker: Option<platform::Speaker>,
+    /// Tabs closed lately, newest last, as file and 1-based page, for Ctrl+Shift+T.
+    closed: Vec<(PathBuf, usize)>,
     /// Pages left by following a link, for Alt+Left and Alt+Right.
     back: Vec<usize>,
     forward: Vec<usize>,
@@ -111,6 +114,11 @@ struct Viewer {
     cache: HashMap<usize, (u32, Image)>,
     details: HashMap<usize, Detail>,
     model: Rc<VecModel<PageView>>,
+    /// The page models of the two panes; `model` is the front one's.
+    pane_models: [Rc<VecModel<PageView>>; 2],
+    /// 0 when the front pane is the left one (always, outside split view), 1 for the right one.
+    focus_side: i32,
+    split: Option<split::Split>,
     turns: u8,
     tone: Tone,
     search: Option<find::SearchState>,
@@ -216,7 +224,9 @@ fn main() -> Result<(), slint::PlatformError> {
     b.set_thumbs(ModelRc::from(thumb_model.clone()));
     b.set_mark_thumbs(ModelRc::from(mark_model.clone()));
     b.set_outline(ModelRc::from(outline_model.clone()));
+    let model_b = Rc::new(VecModel::default());
     b.set_pages(ModelRc::from(model.clone()));
+    b.set_pages_b(ModelRc::from(model_b.clone()));
     b.set_tabs(ModelRc::from(tab_model.clone()));
     b.set_recents(ModelRc::from(recent_model.clone()));
     b.set_favorites(ModelRc::from(favorite_model.clone()));
@@ -253,6 +263,7 @@ fn main() -> Result<(), slint::PlatformError> {
             save_continue: None,
             token: 0,
             speaker: None,
+            closed: Vec::new(),
             back: Vec::new(),
             forward: Vec::new(),
             doc: None,
@@ -268,6 +279,9 @@ fn main() -> Result<(), slint::PlatformError> {
             visible: (0, 0),
             cache: HashMap::new(),
             details: HashMap::new(),
+            pane_models: [model.clone(), model_b.clone()],
+            focus_side: 0,
+            split: None,
             model,
             turns: 0,
             search: None,
@@ -299,6 +313,14 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         })
     });
+    b.on_focus_pane(|side| with_viewer(|viewer, ui| viewer.focus_pane(ui, side)));
+    b.on_exit_split(|| with_viewer(|viewer, ui| viewer.exit_split(ui)));
+    b.on_toggle_split(|| with_viewer(|viewer, ui| viewer.toggle_split(ui)));
+    b.on_move_tab(|from, to| with_viewer(|viewer, ui| viewer.move_tab(ui, from.max(0) as usize, to.max(0) as usize)));
+    b.on_move_tab_by(|step| with_viewer(|viewer, ui| viewer.move_active_tab(ui, step)));
+    b.on_reopen_closed_tab(|| with_viewer(|viewer, ui| viewer.reopen_closed_tab(ui)));
+    b.on_split_tabs(|dragged, target| with_viewer(|viewer, ui| viewer.split_tabs(ui, dragged.max(0) as usize, target.max(0) as usize)));
+    b.on_split_with(|index| with_viewer(|viewer, ui| viewer.split_with(ui, index.max(0) as usize)));
     b.on_cycle_tab(|step| with_viewer(|viewer, ui| viewer.cycle_tab(ui, step)));
     b.on_tab_favorite(|i| {
         with_viewer(|viewer, ui| {
@@ -386,7 +408,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     // The document
-    b.on_viewport_changed(|| with_viewer(|viewer, ui| viewer.refresh(ui)));
+    b.on_viewport_changed(|| with_viewer(|viewer, ui| viewer.refresh_all(ui)));
     b.on_thumbs_changed(|| with_viewer(|viewer, ui| viewer.refresh_thumbs(ui)));
     b.on_go_page(|page| with_viewer(|viewer, ui| viewer.go_to(ui, page.max(0) as usize, 0.0)));
     b.on_page_step(|step| with_viewer(|viewer, ui| viewer.page_step(ui, step)));

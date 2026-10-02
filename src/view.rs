@@ -18,12 +18,20 @@ pub(crate) const SCROLL_PAGE: i32 = 3;
 impl Viewer {
     pub(crate) fn viewport(&self, ui: &AppWindow) -> (f32, f32) {
         let b = ui.global::<Bridge>();
-        (b.get_viewport_width(), b.get_viewport_height())
+        if self.focus_side == 1 {
+            (b.get_viewport_width_b(), b.get_viewport_height_b())
+        } else {
+            (b.get_viewport_width(), b.get_viewport_height())
+        }
     }
 
     pub(crate) fn scroll(&self, ui: &AppWindow) -> (f32, f32) {
         let b = ui.global::<Bridge>();
-        (-b.get_view_x(), -b.get_view_y())
+        if self.focus_side == 1 {
+            (-b.get_view_x_b(), -b.get_view_y_b())
+        } else {
+            (-b.get_view_x(), -b.get_view_y())
+        }
     }
 
     /// Page size in points as displayed, after the user's rotation.
@@ -32,7 +40,7 @@ impl Viewer {
         if self.turns % 2 == 1 { (h, w) } else { (w, h) }
     }
 
-    fn page_count(&self) -> usize {
+    pub(crate) fn page_count(&self) -> usize {
         self.doc.as_ref().map(|d| d.sizes.len()).unwrap_or(0)
     }
 
@@ -170,8 +178,13 @@ impl Viewer {
         }
 
         let b = ui.global::<Bridge>();
-        b.set_content_width(self.content_w);
-        b.set_content_height(self.content_h);
+        if self.focus_side == 1 {
+            b.set_content_width_b(self.content_w);
+            b.set_content_height_b(self.content_h);
+        } else {
+            b.set_content_width(self.content_w);
+            b.set_content_height(self.content_h);
+        }
         b.set_zoom_percent((self.scale / BASE_SCALE * 100.0).round() as i32);
         b.set_zoom_mode(self.zoom.index());
         b.set_can_zoom_in(self.scale < MAX_ZOOM * BASE_SCALE - 0.001);
@@ -189,8 +202,13 @@ impl Viewer {
         let sx = sx.clamp(0.0, (self.content_w - vw).max(0.0));
         let sy = sy.clamp(0.0, (self.content_h - vh).max(0.0));
         let b = ui.global::<Bridge>();
-        b.set_view_x(-sx);
-        b.set_view_y(-sy);
+        if self.focus_side == 1 {
+            b.set_view_x_b(-sx);
+            b.set_view_y_b(-sy);
+        } else {
+            b.set_view_x(-sx);
+            b.set_view_y(-sy);
+        }
     }
 
     /// The page under a content point, or the nearest one.
@@ -225,7 +243,7 @@ impl Viewer {
             .collect()
     }
 
-    fn current_page(&self, ui: &AppWindow) -> usize {
+    pub(crate) fn current_page(&self, ui: &AppWindow) -> usize {
         let (sx, sy) = self.scroll(ui);
         let (vw, vh) = self.viewport(ui);
         let (px, py) = if self.scroll_mode == SCROLL_HORIZONTAL { (sx + vw / 3.0, sy + vh / 2.0) } else { (sx + vw / 2.0, sy + vh / 3.0) };
@@ -333,7 +351,7 @@ impl Viewer {
         self.thumb_model.set_vec(Vec::new());
         self.mark_model.set_vec(Vec::new());
         self.outline_model.set_vec(Vec::new());
-        self.renderer.want(Vec::new());
+        self.renderer.want(self.focus_side as usize, Vec::new());
         self.renderer.want_thumbs(Vec::new());
     }
 
@@ -560,7 +578,7 @@ impl Viewer {
                 }
             }
         }
-        self.renderer.want(wanted);
+        self.renderer.want(self.focus_side as usize, wanted);
 
         let keep_lo = lo.saturating_sub(1);
         let keep_hi = hi + 2;
