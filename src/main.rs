@@ -6,6 +6,7 @@ mod annotate;
 mod find;
 mod platform;
 mod render;
+mod single;
 mod sidebar;
 mod store;
 mod tabs;
@@ -174,6 +175,11 @@ fn tone_of(i: i32) -> Tone {
 
 fn main() -> Result<(), slint::PlatformError> {
     std::panic::set_hook(Box::new(|info| store::log_error(&format!("Crash: {info}"))));
+    // Files go to the window that is already open, when there is one.
+    let launch_files: Vec<PathBuf> = std::env::args_os().skip(1).filter(|a| !a.is_empty()).map(PathBuf::from).collect();
+    if single::hand_over(&launch_files) {
+        return Ok(());
+    }
     platform::set_app_id();
     let ui = AppWindow::new()?;
     let b = ui.global::<Bridge>();
@@ -582,6 +588,15 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     WINDOW.with(|w| *w.borrow_mut() = Some(ui.as_weak()));
     titlebar::on_settings_change(on_settings_change);
+    titlebar::on_open_files(|files| {
+        let _ = slint::invoke_from_event_loop(move || {
+            with_viewer(|viewer, ui| {
+                for path in files {
+                    viewer.open_path(ui, path);
+                }
+            })
+        });
+    });
     // The window becomes visible a moment after the event loop starts; retry until it is there.
     let weak = ui.as_weak();
     let attempts = std::cell::Cell::new(0);

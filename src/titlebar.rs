@@ -7,16 +7,17 @@
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use windows::core::BOOL;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumThreadWindows, GetWindowLongW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
+    EnumThreadWindows, GetWindowLongW, IsIconic, SetForegroundWindow, SetPropW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
     ShowWindow, GWL_STYLE, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTMAXBUTTON, HTTOP, NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER,
     SM_CYFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE,
-    WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
+    WM_COPYDATA, WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
     WS_CAPTION,
 };
 
@@ -71,11 +72,31 @@ pub fn install(on_state: fn(bool, bool, bool)) -> bool {
             return false;
         }
         WINDOW = h;
+        // Lets a second launch find this window and hand its files over.
+        let _ = SetPropW(h, crate::single::PROP, Some(HANDLE(1 as *mut _)));
         // Makes Windows ask WM_NCCALCSIZE again, now answered by `subclass`.
         let _ = SetWindowPos(h, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
     }
     report();
     true
+}
+
+static mut OPEN_CALLBACK: Option<fn(Vec<std::path::PathBuf>)> = None;
+
+/// `on_open` runs with the files another launch of the program wants opened here.
+pub fn on_open_files(on_open: fn(Vec<std::path::PathBuf>)) {
+    unsafe {
+        OPEN_CALLBACK = Some(on_open);
+    }
+}
+
+fn bring_to_front(h: HWND) {
+    unsafe {
+        if IsIconic(h).as_bool() {
+            let _ = ShowWindow(h, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(h);
+    }
 }
 
 static mut STATE_CALLBACK: Option<fn(bool, bool, bool)> = None;
@@ -148,6 +169,20 @@ fn hit_test(h: HWND, lparam: LPARAM) -> Option<u32> {
 unsafe extern "system" fn subclass(h: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM, _id: usize, _data: usize) -> LRESULT {
     unsafe {
         match msg {
+            WM_COPYDATA => {
+                let data = &*(lparam.0 as *const COPYDATASTRUCT);
+                if data.dwData == crate::single::COPY_ID && !data.lpData.is_null() {
+                    let units = std::slice::from_raw_parts(data.lpData as *const u16, data.cbData as usize / 2);
+                    let text = String::from_utf16_lossy(units);
+                    let files: Vec<std::path::PathBuf> =
+                        text.trim_end_matches('\0').split('\n').filter(|s| !s.is_empty()).map(std::path::PathBuf::from).collect();
+                    bring_to_front(h);
+                    if let Some(open) = OPEN_CALLBACK {
+                        open(files);
+                    }
+                    return LRESULT(1);
+                }
+            }
             WM_DPICHANGED => {
                 // winit sizes the window as if it still had a caption, so every monitor change would
                 // add the caption height. Windows already worked out the right rectangle.

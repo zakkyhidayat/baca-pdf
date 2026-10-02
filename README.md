@@ -22,12 +22,13 @@ This is the native rewrite of the Tauri and pdf.js version. Reading, searching, 
 - **Auto reload** when a file changes on disk, and **restore tabs** at start, both optional on Home.
 - **Light and dark theme**, following Windows unless you choose one on Home.
 - **Touch**: larger targets, pinch zoom, and drag to scroll. The layout switches on by itself on a touch screen.
+- **One window**: opening several PDFs from Explorer, or launching the program again, sends the files to the window that is already open as tabs.
 - Keyboard shortcuts are listed in the app (F1).
 
 ## Not built yet
 
 - Form filling, signatures, stamps and comments. Added text uses a built-in Latin font.
-- The `.pdf` file association and opening files into an already running window.
+- Registering itself as the default `.pdf` program. Windows must be told once, in Settings, to open PDFs with Baca PDF.
 
 ## Where it keeps its data
 
