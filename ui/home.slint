@@ -1,0 +1,604 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, PrimaryButton, LinkButton, MenuItem, MenuRule, Flyout, Kbd } from "controls.slint";
+import { Bridge, RecentItem, BookmarkFile } from "bridge.slint";
+
+component FileIcon inherits Image {
+    width: 32px;
+    height: 32px;
+    source: Bridge.file-icon;
+    accessible-role: none;
+}
+
+component SectionTitle inherits Text {
+    font-size: 16px;
+    font-weight: 600;
+    color: Theme.text;
+    accessible-role: text;
+}
+
+// A favorite: a card with the file, and its star to take it off the list.
+component FavoriteCard {
+    in property <RecentItem> item;
+    callback open;
+    callback unstar;
+    callback menu(length, length);
+
+    height: 60px;
+    accessible-role: button;
+    accessible-label: root.item.name;
+    accessible-description: root.item.missing ? "File not found" : root.item.folder;
+    accessible-action-default => { root.open(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 8px;
+        background: area.has-hover ? Theme.hover : Theme.surface;
+        border-width: focus.has-focus ? 2px : 1px;
+        border-color: focus.has-focus ? Theme.focus : Theme.divider;
+    }
+    area := TouchArea {
+        clicked => { root.open(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.menu(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            FileIcon {
+                opacity: root.item.missing ? 0.5 : 1;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.name;
+                font-weight: 600;
+                overflow: elide;
+                color: Theme.text;
+                opacity: root.item.missing ? 0.5 : 1;
+                accessible-role: none;
+            }
+            Text {
+                text: root.item.missing ? "File not found" : root.item.folder;
+                font-size: 12px;
+                overflow: elide;
+                color: Theme.text-secondary;
+                accessible-role: none;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                // FavoriteStarFill
+                glyph: "\u{E735}";
+                accent-glyph: true;
+                label: "Remove " + root.item.name + " from favorites";
+                clicked => { root.unstar(); }
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.open();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component RecentRow {
+    in property <RecentItem> item;
+    callback open;
+    callback star;
+    callback remove;
+    callback menu(length, length);
+
+    height: Metrics.touch ? 60px : 52px;
+    accessible-role: list-item;
+    accessible-label: root.item.name;
+    accessible-description: root.item.missing ? "File not found" : root.item.folder;
+    accessible-action-default => { root.open(); }
+    forward-focus: focus;
+    // The row's buttons show on hover or focus, always on touch screens, and a favorite's star stays.
+    // The pointer over a button is no longer over the row's own area, so count the buttons too, or
+    // the buttons would hide the moment the pointer reached them and flicker.
+    property <bool> over: area.has-hover || star-button.hovered || remove-button.hovered;
+    property <bool> show-buttons: root.over || focus.has-focus || star-button.has-focus || remove-button.has-focus || Metrics.touch;
+
+    Rectangle {
+        border-radius: 8px;
+        background: root.over ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    area := TouchArea {
+        clicked => { root.open(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.menu(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            FileIcon {
+                opacity: root.item.missing ? 0.5 : 1;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.name;
+                font-weight: 600;
+                overflow: elide;
+                color: Theme.text;
+                opacity: root.item.missing ? 0.5 : 1;
+                accessible-role: none;
+            }
+            Text {
+                text: root.item.missing ? "File not found" : root.item.folder;
+                font-size: 12px;
+                overflow: elide;
+                color: Theme.text-secondary;
+                accessible-role: none;
+            }
+        }
+        Text {
+            text: (root.item.page > 1 ? "Page " + root.item.page + " · " : "") + root.item.when;
+            font-size: 12px;
+            vertical-alignment: center;
+            color: Theme.text-secondary;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            star-button := IconButton {
+                opacity: root.show-buttons || root.item.favorite ? 1 : 0;
+                // FavoriteStarFill and FavoriteStar
+                glyph: root.item.favorite ? "\u{E735}" : "\u{E734}";
+                accent-glyph: root.item.favorite;
+                glyph-color: Theme.text-secondary;
+                label: root.item.favorite ? "Remove " + root.item.name + " from favorites" : "Add " + root.item.name + " to favorites";
+                clicked => { root.star(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            remove-button := IconButton {
+                opacity: root.show-buttons ? 1 : 0;
+                glyph: "\u{E711}";
+                glyph-size: 12px;
+                glyph-color: Theme.text-secondary;
+                label: "Remove " + root.item.name + " from recent";
+                clicked => { root.remove(); }
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.open();
+                return accept;
+            }
+            if (event.text == Key.Delete) {
+                root.remove();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component BookmarkChip {
+    in property <int> page;
+    callback clicked;
+
+    height: 24px;
+    width: label.preferred-width + 20px;
+    accessible-role: button;
+    accessible-label: "Page " + root.page;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: area.has-hover ? Theme.hover : Theme.surface;
+        border-width: focus.has-focus ? 2px : 1px;
+        border-color: focus.has-focus ? Theme.focus : Theme.divider;
+    }
+    label := Text {
+        text: "Page " + root.page;
+        font-size: 12px;
+        color: Theme.text;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component Home inherits Rectangle {
+    background: Theme.bar;
+    callback show-shortcuts();
+    callback show-about();
+
+    // The menu for a recent file (source 0) or a favorite (source 1).
+    property <int> menu-source;
+    property <int> menu-index;
+    property <bool> menu-favorite;
+    property <length> menu-x;
+    property <length> menu-y;
+    property <[string]> theme-glyphs: ["\u{E793}", "\u{E706}", "\u{E708}"];
+    property <[string]> theme-names: ["follows Windows", "light", "dark"];
+    property <[string]> zoom-names: ["Automatic", "Fit the page", "Fit the width", "Actual size"];
+
+    flick := Flickable {
+        // Sized by Home, never by the column inside it.
+        min-width: 0px;
+        preferred-width: 0px;
+        max-width: 100000px;
+        min-height: 0px;
+        preferred-height: 0px;
+        max-height: 100000px;
+        horizontal-stretch: 1;
+        vertical-stretch: 1;
+        content-height: max(self.height, column.preferred-height);
+        content-width: self.width;
+
+        column := VerticalLayout {
+            x: (flick.width - self.width) / 2;
+            width: min(920px, flick.width);
+            height: max(flick.height, self.preferred-height);
+            padding-top: flick.width < 640px ? 24px : 40px;
+            padding-left: flick.width < 640px ? 16px : 32px;
+            padding-right: self.padding-left;
+            padding-bottom: 24px;
+
+            GridLayout {
+                spacing: 16px;
+                VerticalLayout {
+                    row: 0;
+                    col: 0;
+                    alignment: center;
+                    spacing: 4px;
+                    Text {
+                        text: "Baca PDF";
+                        font-family: "Segoe UI Variable Display";
+                        font-size: flick.width < 640px ? 24px : 28px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        accessible-role: text;
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+                        Text {
+                            text: "Press";
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        Kbd { text: "Ctrl"; }
+                        Text {
+                            text: "+";
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        Kbd { text: "O"; }
+                        Text {
+                            text: "to open a PDF, or drop files anywhere on this page.";
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    // Beside the title when there is room, below it when there is not.
+                    row: flick.width < 760px ? 1 : 0;
+                    col: flick.width < 760px ? 0 : 1;
+                    spacing: 8px;
+                    alignment: flick.width < 760px ? start : end;
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            glyph: root.theme-glyphs[Theme.choice];
+                            glyph-color: Theme.text-secondary;
+                            label: "Theme: " + root.theme-names[Theme.choice] + ". Click for " + root.theme-names[Math.mod(Theme.choice + 1, 3)];
+                            clicked => { Bridge.set-theme(Math.mod(Theme.choice + 1, 3)); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            // History
+                            glyph: "\u{E81C}";
+                            glyph-color: Theme.text-secondary;
+                            toggle: true;
+                            checked: Bridge.restore-tabs;
+                            checked-style: "tint";
+                            label: "Reopen the tabs from last time when the app starts without a file: " + (Bridge.restore-tabs ? "on. Click to turn off" : "off. Click to turn on");
+                            clicked => { Bridge.toggle-restore(); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            // Sync
+                            glyph: "\u{E895}";
+                            glyph-color: Theme.text-secondary;
+                            toggle: true;
+                            checked: Bridge.auto-reload;
+                            checked-style: "tint";
+                            label: "Reload a tab by itself when its file changes on disk: " + (Bridge.auto-reload ? "on. Click to turn off" : "off. Click to turn on");
+                            clicked => { Bridge.toggle-reload(); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: Metrics.button;
+                            height: Metrics.button;
+                            IconButton {
+                                // ZoomIn
+                                glyph: "\u{E8A3}";
+                                glyph-color: Theme.text-secondary;
+                                label: "Default zoom for new documents: " + root.zoom-names[Bridge.default-zoom];
+                                clicked => { zoom-menu.show(); }
+                            }
+                            zoom-menu := PopupWindow {
+                                x: 0;
+                                y: parent.height + 4px;
+                                width: 200px;
+                                Flyout {
+                                    VerticalLayout {
+                                        padding: 4px;
+                                        for name[i] in root.zoom-names: MenuItem {
+                                            label: name;
+                                            checkable: true;
+                                            checked: Bridge.default-zoom == i;
+                                            clicked => { Bridge.set-default-zoom(i); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 1px;
+                            height: 20px;
+                            background: Theme.divider;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        PrimaryButton {
+                            // OpenFile
+                            glyph: "\u{E8E5}";
+                            label: "Open file";
+                            clicked => { Bridge.open-file(); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 40px; }
+            SectionTitle { text: "Favorites"; }
+            Rectangle { height: 12px; }
+            if Bridge.favorites.length == 0: Text {
+                text: "No favorites yet. Right-click a file tab and choose Add to favorites (Ctrl+D), or use the star next to a recent file.";
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+                accessible-role: text;
+            }
+            if Bridge.favorites.length > 0: Rectangle {
+                property <int> columns: max(1, floor((self.width + 12px) / (270px + 12px)));
+                property <length> card-width: (self.width - (self.columns - 1) * 12px) / self.columns;
+                height: ceil(Bridge.favorites.length / self.columns) * (60px + 12px) - 12px;
+                for fav[i] in Bridge.favorites: FavoriteCard {
+                    x: Math.mod(i, parent.columns) * (parent.card-width + 12px);
+                    y: floor(i / parent.columns) * (60px + 12px);
+                    width: parent.card-width;
+                    item: fav;
+                    open => { Bridge.open-favorite(i); }
+                    unstar => { Bridge.favorite-remove(i); }
+                    menu(mx, my) => {
+                        root.menu-source = 1;
+                        root.menu-index = i;
+                        root.menu-favorite = true;
+                        root.menu-x = self.absolute-position.x - column.absolute-position.x + mx;
+                        root.menu-y = self.absolute-position.y - column.absolute-position.y + my;
+                        file-menu.show();
+                    }
+                }
+            }
+
+            if Bridge.bookmark-files.length > 0: VerticalLayout {
+                padding-top: 32px;
+                spacing: 12px;
+                SectionTitle { text: "Bookmarks"; }
+                for file[f] in Bridge.bookmark-files: VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        spacing: 12px;
+                        FileIcon { }
+                        Text {
+                            text: file.name;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            color: Theme.text;
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: 56px;
+                        spacing: 4px;
+                        alignment: start;
+                        for page in file.pages: BookmarkChip {
+                            page: page;
+                            clicked => { Bridge.open-bookmark(f, page); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 32px; }
+            HorizontalLayout {
+                SectionTitle {
+                    text: "Recent";
+                    horizontal-stretch: 1;
+                }
+                if Bridge.recents.length > 0: LinkButton {
+                    label: "Clear list";
+                    clicked => { Bridge.clear-recents(); }
+                }
+            }
+            Rectangle { height: 12px; }
+            if Bridge.recents.length == 0: Text {
+                text: "Files you open appear here, with the page you stopped on.";
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+                accessible-role: text;
+            }
+            for item[i] in Bridge.recents: VerticalLayout {
+                padding-bottom: 2px;
+                RecentRow {
+                    item: item;
+                    open => { Bridge.open-recent(i); }
+                    star => { Bridge.recent-favorite(i); }
+                    remove => { Bridge.recent-remove(i); }
+                    menu(mx, my) => {
+                        root.menu-source = 0;
+                        root.menu-index = i;
+                        root.menu-favorite = item.favorite;
+                        root.menu-x = self.absolute-position.x - column.absolute-position.x + mx;
+                        root.menu-y = self.absolute-position.y - column.absolute-position.y + my;
+                        file-menu.show();
+                    }
+                }
+            }
+
+            // Rests on the bottom edge when the page is short, follows the list when it is long.
+            Rectangle {
+                vertical-stretch: 1;
+                min-height: 48px;
+            }
+            HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+                Text {
+                    text: "Version " + Bridge.version;
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+                LinkButton {
+                    label: "GitHub";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { Bridge.open-url("https://github.com/zakkyhidayat/baca-pdf"); }
+                }
+                LinkButton {
+                    label: "Releases";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { Bridge.open-url("https://github.com/zakkyhidayat/baca-pdf/releases"); }
+                }
+                LinkButton {
+                    label: "Report an issue";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { Bridge.open-url("https://github.com/zakkyhidayat/baca-pdf/issues"); }
+                }
+                LinkButton {
+                    label: "Keyboard shortcuts (F1)";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { root.show-shortcuts(); }
+                }
+                LinkButton {
+                    label: "Error log";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { Bridge.open-error-log(); }
+                }
+                LinkButton {
+                    label: "About Baca PDF";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    clicked => { root.show-about(); }
+                }
+            }
+        }
+
+        // The menu for a recent file (source 0) or a favorite (source 1).
+        file-menu := PopupWindow {
+            x: column.x + root.menu-x;
+            y: root.menu-y;
+            width: 240px;
+            Flyout {
+                VerticalLayout {
+                    padding: 4px;
+                    MenuItem {
+                        label: "Open";
+                        clicked => {
+                            if (root.menu-source == 0) { Bridge.open-recent(root.menu-index); } else { Bridge.open-favorite(root.menu-index); }
+                        }
+                    }
+                    MenuRule { }
+                    MenuItem {
+                        label: root.menu-favorite ? "Remove from favorites" : "Add to favorites";
+                        hint: "Ctrl+D";
+                        clicked => {
+                            if (root.menu-source == 0) { Bridge.recent-favorite(root.menu-index); } else { Bridge.favorite-remove(root.menu-index); }
+                        }
+                    }
+                    if root.menu-source == 0: MenuItem {
+                        label: "Copy path";
+                        clicked => { Bridge.recent-copy-path(root.menu-index); }
+                    }
+                    if root.menu-source == 0: MenuItem {
+                        label: "Show in folder";
+                        clicked => { Bridge.recent-show-in-folder(root.menu-index); }
+                    }
+                    if root.menu-source == 0: MenuRule { }
+                    if root.menu-source == 0: MenuItem {
+                        label: "Remove from recent";
+                        clicked => { Bridge.recent-remove(root.menu-index); }
+                    }
+                }
+            }
+        }
+    }
+}

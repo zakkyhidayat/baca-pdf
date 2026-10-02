@@ -1,0 +1,358 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Spinner } from "std-widgets.slint";
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, MenuItem, MenuRule, Flyout } from "controls.slint";
+import { Bridge, TabInfo } from "bridge.slint";
+
+export global TitleMetrics {
+    out property <length> caption-button: 46px;
+}
+
+// The app icon is the Home button: the mark turns into a Home glyph on hover, and stays one while
+// Home is open over tabs.
+component AppHome {
+    in property <bool> on;
+    callback clicked;
+
+    width: 32px;
+    height: 32px;
+    accessible-role: button;
+    accessible-label: "Home (Ctrl+T)";
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+    property <bool> lit: area.has-hover || focus.has-focus || root.on;
+
+    Rectangle {
+        // An off-white chip on the strip, a little brighter under the pointer.
+        border-radius: 8px;
+        background: (area.has-hover || focus.has-focus) ? Theme.chip-hover : Theme.chip;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Image {
+        width: 20px;
+        height: 20px;
+        source: Bridge.app-mark;
+        opacity: root.lit ? 0 : 1;
+        animate opacity { duration: 120ms; easing: ease-out; }
+        accessible-role: none;
+    }
+    Glyph {
+        // Home
+        text: "\u{E80F}";
+        opacity: root.lit ? 1 : 0;
+        animate opacity { duration: 120ms; easing: ease-out; }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component TabItem {
+    in property <TabInfo> info;
+    in property <bool> selected;
+    // A hairline on the left, between two tabs that are not selected.
+    in property <bool> divider;
+    callback activate;
+    callback close;
+    callback menu(length, length);
+
+    height: Metrics.tab-height;
+    accessible-role: tab;
+    accessible-label: root.info.title;
+    accessible-description: root.info.path;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.activate(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        background: root.selected ? Theme.surface : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Rectangle {
+        visible: root.divider;
+        x: 0;
+        y: 8px;
+        width: 1px;
+        height: parent.height - 16px;
+        background: Theme.divider;
+    }
+    area := TouchArea {
+        clicked => { root.activate(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
+                root.close();
+            }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.menu(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 4px;
+        spacing: 4px;
+        if root.info.busy: Spinner {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            indeterminate: true;
+        }
+        if !root.info.busy: Image {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            source: Bridge.file-icon;
+            opacity: root.info.failed ? 0.4 : 1;
+            accessible-role: none;
+        }
+        Text {
+            text: root.info.title;
+            font-size: Metrics.touch ? 14px : 12px;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.text : Theme.text-secondary;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                size: Metrics.touch ? 36px : 28px;
+                // Cancel
+                glyph: "\u{E711}";
+                glyph-size: 12px;
+                label: "Close " + root.info.title + " (Ctrl+W)";
+                clicked => { root.close(); }
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.activate();
+                return accept;
+            }
+            if (event.text == Key.Delete) {
+                root.close();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component CaptionButton {
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> danger;
+    // Set from Rust for the maximize button, whose hover Windows reports instead of Slint.
+    in property <bool> hover-from-system;
+    in property <bool> pressed-from-system;
+    callback clicked;
+
+    width: TitleMetrics.caption-button;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    property <bool> hovered: area.has-hover || root.hover-from-system;
+    property <bool> pressed: area.pressed || root.pressed-from-system;
+
+    Rectangle {
+        background: root.danger
+            ? (root.pressed ? Theme.close-pressed : root.hovered ? Theme.close-hover : transparent)
+            : (root.pressed ? Theme.pressed : root.hovered ? Theme.hover : transparent);
+    }
+    Glyph {
+        text: root.glyph;
+        font-size: 10px;
+        color: root.danger && root.hovered ? white : Bridge.active-window ? Theme.text : Theme.text-secondary;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    background: Theme.strip;
+    height: Metrics.title-height;
+
+    property <int> count: Bridge.tabs.length;
+    property <length> caption-width: (Bridge.fullscreen ? 2 : 4) * TitleMetrics.caption-button;
+    property <length> home-end: 12px + 32px + 8px;
+    property <length> plus-width: 36px;
+    // The window must always keep a place to be grabbed.
+    property <length> drag-min: 32px;
+    property <length> scroll-buttons: root.overflowing ? 2 * 28px : 0px;
+    property <length> room: max(0px, root.width - root.home-end - root.plus-width - root.drag-min - root.caption-width);
+    property <bool> overflowing: root.count * 80px > root.room;
+    property <length> tab-width: root.count == 0 ? 220px : clamp((root.room - root.scroll-buttons) / root.count, 80px, 220px);
+    property <length> strip-width: min(root.count * root.tab-width, root.room - root.scroll-buttons);
+    property <length> strip-x: root.home-end + (root.overflowing ? 28px : 0px);
+    property <length> plus-x: root.strip-x + root.strip-width + (root.overflowing ? 28px : 0px) + 4px;
+
+    // Everything right of the + button, up to the caption buttons, moves the window.
+    changed height => { Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px); }
+    changed plus-x => { Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px); }
+    init => {
+        Bridge.strip-height = self.height;
+        Bridge.drag-from = root.plus-x + 32px + 4px;
+    }
+
+    AppHome {
+        x: 12px;
+        y: (parent.height - self.height) / 2;
+        on: Bridge.active-tab == -1;
+        clicked => { Bridge.select-tab(-1); }
+    }
+
+    if root.overflowing: IconButton {
+        x: root.home-end;
+        y: parent.height - self.height - 4px;
+        size: 28px;
+        // ChevronLeft
+        glyph: "\u{E76B}";
+        glyph-size: 12px;
+        label: "Scroll tabs left";
+        enabled: strip.content-x < 0;
+        clicked => { strip.content-x = min(0px, strip.content-x + 2 * root.tab-width); }
+    }
+
+    strip := Flickable {
+        x: root.strip-x;
+        y: parent.height - Metrics.tab-height;
+        width: root.strip-width;
+        height: Metrics.tab-height;
+        content-width: root.count * root.tab-width;
+        interactive: false;
+        for tab[i] in Bridge.tabs: TabItem {
+            x: i * root.tab-width;
+            y: 0;
+            width: root.tab-width;
+            info: tab;
+            selected: Bridge.active-tab == i;
+            divider: i > 0 && Bridge.active-tab != i && Bridge.active-tab != i - 1;
+            activate => { Bridge.select-tab(i); }
+            close => { Bridge.close-tab(i); }
+            menu(mx, my) => {
+                root.menu-index = i;
+                root.menu-favorite = tab.favorite;
+                root.menu-x = self.x + strip.content-x + strip.x + mx;
+                root.menu-y = strip.y + my;
+                tab-menu.show();
+            }
+        }
+    }
+
+    if root.overflowing: IconButton {
+        x: root.strip-x + root.strip-width;
+        y: parent.height - self.height - 4px;
+        size: 28px;
+        // ChevronRight
+        glyph: "\u{E76C}";
+        glyph-size: 12px;
+        label: "Scroll tabs right";
+        enabled: strip.content-x > strip.width - strip.content-width;
+        clicked => { strip.content-x = max(strip.width - strip.content-width, strip.content-x - 2 * root.tab-width); }
+    }
+
+    IconButton {
+        x: root.plus-x;
+        y: parent.height - self.height - 4px;
+        size: Metrics.touch ? 36px : 28px;
+        // Add
+        glyph: "\u{E710}";
+        glyph-size: 12px;
+        label: "Open another PDF (Ctrl+O)";
+        clicked => { Bridge.open-file(); }
+    }
+
+    HorizontalLayout {
+        x: parent.width - self.width;
+        y: 0;
+        width: root.caption-width;
+        height: parent.height;
+        CaptionButton {
+            // BackToWindow and FullScreen
+            glyph: Bridge.fullscreen ? "\u{E73F}" : "\u{E740}";
+            label: Bridge.fullscreen ? "Exit full screen (F11)" : "Full screen (F11)";
+            clicked => { Bridge.toggle-fullscreen(); }
+        }
+        if !Bridge.fullscreen: CaptionButton {
+            // ChromeMinimize
+            glyph: "\u{E921}";
+            label: "Minimize";
+            clicked => { Bridge.minimize-window(); }
+        }
+        if !Bridge.fullscreen: CaptionButton {
+            // ChromeRestore and ChromeMaximize
+            glyph: Bridge.is-maximized ? "\u{E923}" : "\u{E922}";
+            label: Bridge.is-maximized ? "Restore" : "Maximize";
+            hover-from-system: Bridge.max-hover;
+            pressed-from-system: Bridge.max-pressed;
+            clicked => { Bridge.toggle-maximize(); }
+        }
+        CaptionButton {
+            // ChromeClose
+            glyph: "\u{E8BB}";
+            label: "Close";
+            danger: true;
+            clicked => { Bridge.close-window(); }
+        }
+    }
+
+    property <int> menu-index;
+    property <bool> menu-favorite;
+    property <length> menu-x;
+    property <length> menu-y;
+    tab-menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y;
+        width: 240px;
+        Flyout {
+            VerticalLayout {
+                padding: 4px;
+                MenuItem {
+                    label: "Close tab";
+                    hint: "Ctrl+W";
+                    clicked => { Bridge.close-tab(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Close other tabs";
+                    enabled: root.count > 1;
+                    clicked => { Bridge.close-other-tabs(root.menu-index); }
+                }
+                MenuRule { }
+                MenuItem {
+                    label: root.menu-favorite ? "Remove from favorites" : "Add to favorites";
+                    hint: "Ctrl+D";
+                    clicked => { Bridge.tab-favorite(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Copy path";
+                    clicked => { Bridge.tab-copy-path(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Show in folder";
+                    clicked => { Bridge.tab-show-in-folder(root.menu-index); }
+                }
+            }
+        }
+    }
+}

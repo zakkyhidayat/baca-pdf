@@ -1,0 +1,53 @@
+﻿[package]
+name = "baca-pdf"
+version = "1.0.0"
+edition = "2021"
+description = "Baca PDF: a native PDF reader for Windows 11, built on PDFium"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "thread_safe"] }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_Speech",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_Storage_Xps",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# The software renderer keeps page bitmaps in one place. With OpenGL on integrated graphics every
+# bitmap is also a texture, and the driver holds freed texture memory (about 450 MB after deep zoom).
+[dependencies.slint]
+version = "1.18"
+default-features = false
+features = ["std", "backend-winit", "renderer-software", "accessibility", "compat-1-2", "unstable-winit-030"]
+
+[profile.release]
+opt-level = 3
+# Fat LTO with one codegen unit crashes rustc 1.98.1 inside icu_segmenter.
+lto = "thin"
+strip = true
+panic = "abort"
+
+# Optimized but quick to rebuild, for measuring during development.
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+

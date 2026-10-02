@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, PrimaryButton, SecondaryButton } from "controls.slint";
+import { Bridge, PropRow } from "bridge.slint";
+
+// A modal card over a dimmed window. Esc, the close button, or a click outside closes it.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <length> card-width: 460px;
+    in property <bool> show-close-button: true;
+    callback close;
+
+    background: #0000004d;
+    forward-focus: keys;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close();
+                return accept;
+            }
+            accept
+        }
+    }
+    card := Rectangle {
+        width: min(root.card-width, root.width - 32px);
+        height: min(body.preferred-height, root.height - 32px);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        background: Theme.surface;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.menu-border;
+        drop-shadow-blur: 64px;
+        drop-shadow-offset-y: 32px;
+        drop-shadow-color: #00000047;
+        clip: true;
+        accessible-role: groupbox;
+        accessible-label: root.title;
+        // Clicks on the card stay on it.
+        TouchArea { }
+        body := VerticalLayout {
+            padding: 24px;
+            padding-top: 20px;
+            spacing: 16px;
+            HorizontalLayout {
+                Text {
+                    text: root.title;
+                    font-family: "Segoe UI Variable Display";
+                    font-size: 20px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    color: Theme.text;
+                    accessible-role: text;
+                }
+                if root.show-close-button: IconButton {
+                    glyph: "\u{E711}";
+                    glyph-size: 12px;
+                    label: "Close";
+                    clicked => { root.close(); }
+                }
+            }
+            @children
+        }
+    }
+    init => { keys.focus(); }
+}
+
+export component PropertiesDialog inherits Dialog {
+    title: "Document properties";
+    card-width: 520px;
+    show-close-button: false;
+    close => { Bridge.properties-open = false; }
+
+    VerticalLayout {
+        spacing: 6px;
+        for row in Bridge.properties: HorizontalLayout {
+            spacing: 16px;
+            Text {
+                width: 150px;
+                text: row.label;
+                color: Theme.text-secondary;
+                accessible-role: none;
+            }
+            Text {
+                text: row.value == "" ? "-" : row.value;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+                color: Theme.text;
+                accessible-role: text;
+                accessible-label: row.label + ": " + (row.value == "" ? "none" : row.value);
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            label: "Close";
+            clicked => { Bridge.properties-open = false; }
+        }
+    }
+}
+
+export component ShortcutsDialog inherits Dialog {
+    title: "Keyboard shortcuts";
+    card-width: 560px;
+    show-close-button: false;
+    close => { Bridge.shortcuts-open = false; }
+
+    property <[{action: string, keys: string}]> rows: [
+        { action: "Open a PDF", keys: "Ctrl+O" },
+        { action: "Home", keys: "Ctrl+T" },
+        { action: "Close the tab", keys: "Ctrl+W" },
+        { action: "Next or previous tab", keys: "Ctrl+Tab, Ctrl+Shift+Tab" },
+        { action: "Add to or remove from favorites", keys: "Ctrl+D" },
+        { action: "Find in document", keys: "Ctrl+F" },
+        { action: "Next or previous result", keys: "F3, Shift+F3" },
+        { action: "Copy the selected text", keys: "Ctrl+C" },
+        { action: "Select the text on this page", keys: "Ctrl+A" },
+        { action: "Bookmark this page", keys: "Ctrl+B" },
+        { action: "Go to page", keys: "Ctrl+G" },
+        { action: "Next or previous page", keys: "Page Down, Page Up, Space" },
+        { action: "First or last page", keys: "Home, End" },
+        { action: "Zoom in or out", keys: "Ctrl+plus, Ctrl+minus, Ctrl+wheel" },
+        { action: "Fit the width", keys: "Ctrl+0" },
+        { action: "Rotate clockwise or counterclockwise", keys: "R, Shift+R" },
+        { action: "Print", keys: "Ctrl+P" },
+        { action: "Save a copy", keys: "Ctrl+S" },
+        { action: "Back and forward after following a link", keys: "Alt+Left, Alt+Right" },
+        { action: "Leave a drawing tool", keys: "Esc" },
+        { action: "Document properties", keys: "Alt+Enter" },
+        { action: "Presentation mode", keys: "F5" },
+        { action: "Full screen", keys: "F11" },
+        { action: "This list", keys: "F1" },
+    ];
+
+    VerticalLayout {
+        spacing: 4px;
+        for row in root.rows: HorizontalLayout {
+            spacing: 16px;
+            Text {
+                text: row.action;
+                horizontal-stretch: 1;
+                color: Theme.text;
+            }
+            Text {
+                text: row.keys;
+                color: Theme.text-secondary;
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            label: "Close";
+            clicked => { Bridge.shortcuts-open = false; }
+        }
+    }
+}
+
+export component AboutDialog inherits Dialog {
+    title: "About Baca PDF";
+    close => { Bridge.about-open = false; }
+
+    HorizontalLayout {
+        spacing: 16px;
+        Image {
+            width: 64px;
+            height: 64px;
+            source: Bridge.app-icon;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            spacing: 8px;
+            Text {
+                text: "Version " + Bridge.version;
+                color: Theme.text;
+            }
+            Text {
+                text: "Renders PDFs with PDFium.\nBuilt with Claude Code for personal use.\nLicensed under GPL-3.0-or-later.";
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+            }
+        }
+    }
+}
+
+// Asked before a tab with drawings or highlights closes: they only exist in memory until a copy is saved.
+export component ConfirmDialog inherits Dialog {
+    title: "Save your changes?";
+    show-close-button: false;
+    card-width: 480px;
+    close => { Bridge.confirm-choice(2); }
+
+    Text {
+        text: Bridge.confirm-text + " Closing without saving a copy discards your highlights, drawings and text.";
+        wrap: word-wrap;
+        color: Theme.text;
+        accessible-role: text;
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 8px;
+        SecondaryButton {
+            label: "Cancel";
+            clicked => { Bridge.confirm-choice(2); }
+        }
+        SecondaryButton {
+            label: "Don't save";
+            clicked => { Bridge.confirm-choice(1); }
+        }
+        PrimaryButton {
+            label: "Save a copy";
+            clicked => { Bridge.confirm-choice(0); }
+        }
+    }
+}

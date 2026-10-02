@@ -1,0 +1,696 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ScrollView, ListView } from "std-widgets.slint";
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, PrimaryButton, Flyout, MenuItem } from "controls.slint";
+import { Bridge, DocState, ThumbView, OutlineRow } from "bridge.slint";
+
+component ThumbItem {
+    in property <ThumbView> item;
+    in property <length> cell-width;
+    callback activate;
+    // A right-click: where it landed, relative to this item.
+    callback context(length, length);
+
+    x: 0;
+    y: root.item.y - 8px;
+    width: root.cell-width;
+    height: 168px + 36px;
+    accessible-role: button;
+    accessible-label: "Page " + (root.item.page + 1);
+    accessible-action-default => { root.activate(); }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 8px + (168px - root.item.height) / 2 - 3px;
+        width: root.item.width + 6px;
+        height: root.item.height + 6px;
+        border-radius: 4px;
+        border-width: root.item.current ? 3px : (focus.has-focus ? 2px : 0px);
+        border-color: root.item.current ? Theme.accent : Theme.focus;
+    }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 8px + (168px - root.item.height) / 2;
+        width: root.item.width;
+        height: root.item.height;
+        background: white;
+        border-width: 1px;
+        border-color: #00000024;
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.item.image;
+            image-fit: fill;
+        }
+    }
+    // The same ribbon as on the page, so bookmarked pages show in the list too.
+    for saved in Bridge.bookmark-pages: Path {
+        visible: saved == root.item.page + 1;
+        x: (parent.width + root.item.width) / 2 - 20px;
+        y: 8px + (168px - root.item.height) / 2;
+        width: 14px;
+        height: 21px;
+        viewbox-width: 22;
+        viewbox-height: 32;
+        commands: "M 0 0 L 22 0 L 22 32 L 11 24 L 0 32 Z";
+        fill: Theme.accent;
+        accessible-role: none;
+    }
+    Rectangle {
+        y: 8px + 168px + 6px;
+        x: (parent.width - self.width) / 2;
+        width: number.preferred-width + 12px;
+        height: 20px;
+        border-radius: 4px;
+        background: root.item.current ? Theme.accent : transparent;
+        number := Text {
+            text: root.item.page + 1;
+            font-size: 12px;
+            color: root.item.current ? Theme.on-accent : Theme.text-secondary;
+        }
+    }
+    TouchArea {
+        clicked => { root.activate(); }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                root.context(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.activate();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component OutlineEntry {
+    in property <OutlineRow> item;
+    callback activate;
+
+    min-height: Metrics.touch ? 44px : 32px;
+    accessible-role: button;
+    accessible-label: root.item.title + (root.item.page > 0 ? ", page " + root.item.page : "");
+    accessible-action-default => { root.activate(); }
+
+    Rectangle {
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    area := TouchArea {
+        enabled: root.item.page > 0;
+        clicked => { root.activate(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.activate();
+                return accept;
+            }
+            reject
+        }
+    }
+    HorizontalLayout {
+        padding-left: 8px + root.item.depth * 14px;
+        padding-right: 8px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 8px;
+        Text {
+            text: root.item.title;
+            font-size: 13px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            font-weight: root.item.depth == 0 ? 600 : 400;
+            color: root.item.page > 0 ? Theme.text : Theme.text-secondary;
+        }
+        if root.item.page > 0: Text {
+            text: root.item.page;
+            font-size: 12px;
+            vertical-alignment: center;
+            color: Theme.text-secondary;
+        }
+    }
+}
+
+component SidebarTab {
+    in property <bool> compact;
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+
+    height: Metrics.button;
+    horizontal-stretch: 1;
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: root.selected ? Theme.toggled : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        Glyph {
+            text: root.glyph;
+        }
+        // Three tabs only fit as icons in a narrow panel; their names stay as accessible labels.
+        if !root.compact: Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.selected ? 600 : 400;
+            vertical-alignment: center;
+            color: Theme.text;
+            accessible-role: none;
+        }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    background: Theme.sidebar;
+    property <length> menu-x;
+    property <length> menu-y;
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 6px;
+            spacing: 4px;
+            SidebarTab {
+                compact: root.width < 250px;
+                // ViewAll
+                glyph: "\u{E8A9}";
+                label: "Pages";
+                selected: Bridge.sidebar-tab == 0;
+                clicked => {
+                    Bridge.sidebar-tab = 0;
+                    Bridge.sidebar-toggled();
+                }
+            }
+            SidebarTab {
+                compact: root.width < 250px;
+                // BulletedList
+                glyph: "\u{E8FD}";
+                label: "Outline";
+                selected: Bridge.sidebar-tab == 1;
+                clicked => {
+                    Bridge.sidebar-tab = 1;
+                    Bridge.sidebar-toggled();
+                }
+            }
+            SidebarTab {
+                compact: root.width < 250px;
+                // Tag
+                glyph: "\u{E8EC}";
+                label: "Bookmarked pages";
+                selected: Bridge.sidebar-tab == 2;
+                clicked => {
+                    Bridge.sidebar-tab = 2;
+                    Bridge.sidebar-toggled();
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            thumb-list := Flickable {
+                visible: Bridge.sidebar-tab == 0;
+                content-height: Bridge.thumb-content-height;
+                content-y <=> Bridge.thumb-view-y;
+                changed content-y => { Bridge.thumbs-changed(); }
+                changed height => {
+                    Bridge.thumb-viewport-height = self.height;
+                    Bridge.thumbs-changed();
+                }
+                init => { Bridge.thumb-viewport-height = self.height; }
+                for t in Bridge.thumbs: ThumbItem {
+                    item: t;
+                    cell-width: thumb-list.width;
+                    activate => { Bridge.go-page(t.page); }
+                    context(x, y) => {
+                        Bridge.thumb-menu-prepare(t.page);
+                        root.menu-x = min(x, root.width - 280px);
+                        root.menu-y = 44px + t.y - 8px + Bridge.thumb-view-y + y;
+                        thumb-menu.show();
+                    }
+                }
+            }
+            mark-list := Flickable {
+                visible: Bridge.sidebar-tab == 2;
+                content-height: Bridge.mark-content-height;
+                for t in Bridge.mark-thumbs: ThumbItem {
+                    item: t;
+                    cell-width: mark-list.width;
+                    activate => { Bridge.go-page(t.page); }
+                    context(x, y) => {
+                        Bridge.thumb-menu-prepare(t.page);
+                        root.menu-x = min(x, root.width - 280px);
+                        root.menu-y = 44px + t.y - 8px + mark-list.viewport-y + y;
+                        thumb-menu.show();
+                    }
+                }
+            }
+            if Bridge.sidebar-tab == 2 && Bridge.mark-thumbs.length == 0: Text {
+                x: 16px;
+                y: 16px;
+                width: parent.width - 32px;
+                text: "No bookmarked pages yet. Right-click a page and choose Bookmark this page.";
+                font-size: 13px;
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+            }
+            if Bridge.sidebar-tab == 1 && Bridge.outline.length == 0: Text {
+                x: 16px;
+                y: 16px;
+                width: parent.width - 32px;
+                text: "This document has no outline.";
+                font-size: 13px;
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+            }
+            if Bridge.sidebar-tab == 1 && Bridge.outline.length > 0: ListView {
+                for o in Bridge.outline: OutlineEntry {
+                    item: o;
+                    activate => { Bridge.go-page(o.page - 1); }
+                }
+            }
+        }
+    }
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.toolbar-border;
+    }
+    thumb-menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y;
+        width: 280px;
+        Flyout {
+            VerticalLayout {
+                padding: 6px;
+                MenuItem {
+                    glyph: "\u{E8EC}";
+                    label: Bridge.menu-bookmarked ? "Remove bookmark from this page" : "Bookmark this page";
+                    clicked => { Bridge.toggle-bookmark-page(Bridge.menu-page); }
+                }
+            }
+        }
+    }
+}
+
+component CopyButton {
+    callback clicked;
+    height: Metrics.button;
+    width: row.preferred-width;
+    accessible-role: button;
+    accessible-label: "Copy (Ctrl+C)";
+    accessible-action-default => { root.clicked(); }
+    Rectangle {
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+    }
+    row := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 8px;
+        Glyph {
+            // Copy
+            text: "\u{E8C8}";
+        }
+        Text {
+            text: "Copy";
+            vertical-alignment: center;
+            color: Theme.text;
+            accessible-role: none;
+        }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// The pages themselves, scrolled, zoomed, pinched and selected in.
+export component PageArea inherits Rectangle {
+    callback focus-document();
+    callback copy();
+    property <length> menu-x;
+    property <length> menu-y;
+
+    background: Bridge.presenting ? black : Theme.body;
+    property <brush> paper: Bridge.page-tone == 1 ? #1b1b1b : Bridge.page-tone == 2 ? #f4ecd8 : white;
+
+    if Bridge.state == DocState.loading || Bridge.state == DocState.failed: VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        padding: 24px;
+        Text {
+            text: Bridge.state == DocState.loading ? "Opening " + Bridge.doc-title : (Bridge.needs-password ? Bridge.doc-title + " is locked" : "Could not open " + Bridge.doc-title);
+            font-size: 20px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            color: Theme.text;
+        }
+        Text {
+            text: Bridge.state == DocState.loading ? "Reading the document." : Bridge.error-text;
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if Bridge.state == DocState.failed && Bridge.needs-password: HorizontalLayout {
+            alignment: center;
+            padding-top: 8px;
+            spacing: 8px;
+            Rectangle {
+                width: 260px;
+                height: Metrics.button;
+                border-radius: 4px;
+                background: Theme.field;
+                border-width: 1px;
+                border-color: Bridge.password-wrong ? (Theme.dark ? #ff99a4 : #c42b1c) : Theme.field-border;
+                Rectangle {
+                    visible: password.has-focus;
+                    y: parent.height - 2px;
+                    height: 2px;
+                    background: Theme.focus;
+                }
+                Text {
+                    visible: password.text == "";
+                    x: 8px;
+                    height: parent.height;
+                    text: "Password";
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+                password := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height;
+                    input-type: InputType.password;
+                    single-line: true;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                    accessible-label: "Password";
+                    accepted => { Bridge.submit-password(self.text); }
+                }
+            }
+            PrimaryButton {
+                label: "Open";
+                clicked => { Bridge.submit-password(password.text); }
+            }
+        }
+        if Bridge.state == DocState.failed && Bridge.needs-password && Bridge.password-wrong: Text {
+            text: "That password did not work. Try again.";
+            color: Theme.dark ? #ff99a4 : #c42b1c;
+            horizontal-alignment: center;
+        }
+        if Bridge.state != DocState.loading && !Bridge.needs-password: HorizontalLayout {
+            alignment: center;
+            padding-top: 8px;
+            PrimaryButton {
+                glyph: "\u{E8E5}";
+                label: "Open another file";
+                clicked => { Bridge.open-file(); }
+            }
+        }
+    }
+
+    ScaleRotateGestureHandler {
+        visible: Bridge.state == DocState.ready;
+        enabled: Bridge.state == DocState.ready;
+        started => { Bridge.pinch-started(); }
+        updated => { Bridge.pinch-updated(self.scale, self.center.x, self.center.y); }
+        ended => { Bridge.pinch-ended(); }
+        cancelled => { Bridge.pinch-ended(); }
+
+        scroller := ScrollView {
+            width: parent.width;
+            height: parent.height;
+            content-width: max(Bridge.content-width, self.visible-width);
+            content-height: max(Bridge.content-height, self.visible-height);
+            content-x <=> Bridge.view-x;
+            content-y <=> Bridge.view-y;
+            mouse-drag-pan-enabled: Bridge.hand-tool;
+            vertical-scrollbar-policy: Bridge.presenting ? ScrollBarPolicy.always-off : ScrollBarPolicy.as-needed;
+            horizontal-scrollbar-policy: Bridge.presenting ? ScrollBarPolicy.always-off : ScrollBarPolicy.as-needed;
+            changed content-x => { Bridge.viewport-changed(); }
+            changed content-y => { Bridge.viewport-changed(); }
+            changed visible-width => {
+                Bridge.viewport-width = self.visible-width;
+                Bridge.viewport-changed();
+            }
+            changed visible-height => {
+                Bridge.viewport-height = self.visible-height;
+                Bridge.viewport-changed();
+            }
+            init => {
+                Bridge.viewport-width = self.visible-width;
+                Bridge.viewport-height = self.visible-height;
+            }
+
+            for p in Bridge.pages: Rectangle {
+                x: p.x;
+                y: p.y;
+                width: p.width;
+                height: p.height;
+                background: root.paper;
+                // A blurred drop-shadow is cached as a texture the size of the page, which at
+                // high zoom costs hundreds of megabytes; a hairline edge separates pages for free.
+                border-width: Bridge.presenting ? 0px : 1px;
+                border-color: #00000024;
+                accessible-role: image;
+                accessible-label: "Page " + (p.page + 1);
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: p.image;
+                    image-fit: fill;
+                    accessible-role: none;
+                }
+                if p.dw > 0: Image {
+                    x: p.dx;
+                    y: p.dy;
+                    width: p.dw;
+                    height: p.dh;
+                    source: p.detail;
+                    image-fit: fill;
+                    accessible-role: none;
+                }
+                // A ribbon on the corner of every bookmarked page.
+                for saved in Bridge.bookmark-pages: Path {
+                    visible: saved == p.page + 1 && !Bridge.presenting;
+                    x: parent.width - 40px;
+                    y: 0px;
+                    width: 22px;
+                    height: 32px;
+                    viewbox-width: 22;
+                    viewbox-height: 32;
+                    commands: "M 0 0 L 22 0 L 22 32 L 11 24 L 0 32 Z";
+                    fill: Theme.accent;
+                    accessible-role: none;
+                }
+                for m in p.marks: Rectangle {
+                    x: m.x - 1px;
+                    y: m.y - 1px;
+                    width: m.width + 2px;
+                    height: m.height + 2px;
+                    border-radius: 2px;
+                    background: m.kind == 2 ? Theme.accent.with-alpha(0.35)
+                        : m.kind == 1 ? #FF8C0080 : #FFD60A59;
+                    border-width: m.kind == 1 ? 1px : 0px;
+                    border-color: #C25E00;
+                }
+            }
+
+            TouchArea {
+                x: 0;
+                y: 0;
+                width: scroller.content-width;
+                height: scroller.content-height;
+                mouse-cursor: Bridge.tool == 2 || Bridge.tool == 4 ? MouseCursor.crosshair : Bridge.tool == 3 ? MouseCursor.pointer : MouseCursor.text;
+                property <bool> selecting;
+                property <bool> drawing;
+                property <length> down-x;
+                property <length> down-y;
+                pointer-event(event) => {
+                    if (event.touch-finger-id != 0 && Bridge.tool == 0) {
+                        if (event.kind == PointerEventKind.down) { Metrics.touch = true; }
+                        return;
+                    }
+                    if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                        Bridge.page-menu-prepare(self.mouse-x, self.mouse-y);
+                        root.menu-x = self.mouse-x + Bridge.view-x;
+                        root.menu-y = self.mouse-y + Bridge.view-y;
+                        page-menu.show();
+                        return;
+                    }
+                    if (event.button != PointerEventButton.left || Bridge.hand-tool) { return; }
+                    if (event.kind == PointerEventKind.down) {
+                        root.focus-document();
+                        if (Bridge.tool == 0 || Bridge.tool == 1) {
+                            self.selecting = true;
+                            self.down-x = self.mouse-x;
+                            self.down-y = self.mouse-y;
+                            Bridge.select-at(0, self.mouse-x, self.mouse-y);
+                        } else if (Bridge.tool == 2) {
+                            self.drawing = true;
+                            Bridge.stroke-begin(self.mouse-x, self.mouse-y);
+                        } else if (Bridge.tool == 3) {
+                            Bridge.erase-at(self.mouse-x, self.mouse-y);
+                        } else if (Bridge.tool == 4) {
+                            Bridge.text-at(self.mouse-x, self.mouse-y);
+                        }
+                    }
+                    if (event.kind == PointerEventKind.up) {
+                        if (self.drawing) {
+                            self.drawing = false;
+                            Bridge.stroke-point(self.mouse-x, self.mouse-y);
+                            Bridge.stroke-end();
+                        }
+                        if (self.selecting) {
+                            self.selecting = false;
+                            if (Bridge.tool == 1) {
+                                Bridge.annotate-selection();
+                            } else if (abs(self.mouse-x - self.down-x) < 4px && abs(self.mouse-y - self.down-y) < 4px) {
+                                // A press and release in the same spot is a click, which may land on a link.
+                                Bridge.link-click(self.mouse-x, self.mouse-y);
+                            }
+                        }
+                    }
+                }
+                moved => {
+                    if (self.selecting) { Bridge.select-at(1, self.mouse-x, self.mouse-y); }
+                    if (self.drawing) { Bridge.stroke-point(self.mouse-x, self.mouse-y); }
+                }
+                double-clicked => {
+                    Bridge.zoom-toggle(self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
+                }
+                scroll-event(event) => {
+                    if (event.modifiers.control && event.delta-y != 0) {
+                        Bridge.zoom-by(event.delta-y / 1px, self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
+                        return accept;
+                    }
+                    if (Bridge.scroll-wheel(event.delta-y)) { return accept; }
+                    reject
+                }
+            }
+
+            // The line being drawn, before it becomes part of the page.
+            if Bridge.stroke-path != "": Path {
+                x: Bridge.stroke-x;
+                y: Bridge.stroke-y;
+                width: Bridge.stroke-w;
+                height: Bridge.stroke-h;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                commands: Bridge.stroke-path;
+                stroke: Bridge.draw-colors[Bridge.draw-color];
+                stroke-width: Bridge.stroke-width;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                fill: transparent;
+                accessible-role: none;
+            }
+
+            // Where text is typed before it is placed on the page.
+            if Bridge.text-open: Rectangle {
+                x: Bridge.text-x;
+                y: Bridge.text-y;
+                width: max(140px, typed.preferred-width + 20px);
+                height: 28px;
+                background: Theme.surface;
+                border-width: 2px;
+                border-color: Theme.accent;
+                border-radius: 4px;
+                typed := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height;
+                    font-size: 14px;
+                    single-line: true;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                    selection-background-color: Theme.accent;
+                    selection-foreground-color: Theme.on-accent;
+                    accessible-label: "Text to add. Press Enter to place it";
+                    accepted => { Bridge.text-commit(self.text); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Escape) {
+                            Bridge.text-cancel();
+                            return accept;
+                        }
+                        reject
+                    }
+                    init => { self.focus(); }
+                }
+            }
+        }
+    }
+
+    page-menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y;
+        width: 280px;
+        Flyout {
+            VerticalLayout {
+                padding: 6px;
+                MenuItem {
+                    glyph: "\u{E8EC}";
+                    label: Bridge.menu-bookmarked ? "Remove bookmark from this page" : "Bookmark this page";
+                    clicked => { Bridge.toggle-bookmark-page(Bridge.menu-page); }
+                }
+            }
+        }
+    }
+
+    if Bridge.has-selection && Bridge.notice == "" && !Bridge.presenting: Flyout {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 24px;
+        width: copy-row.preferred-width;
+        height: copy-row.preferred-height;
+        copy-row := HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            CopyButton {
+                clicked => { root.copy(); }
+            }
+            IconButton {
+                glyph: "\u{E711}";
+                label: "Clear selection (Esc)";
+                clicked => { Bridge.clear-selection(); }
+            }
+        }
+    }
+}

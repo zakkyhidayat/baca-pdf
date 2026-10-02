@@ -1,0 +1,1004 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, MenuItem, MenuHeading, MenuRule, Flyout, ToolbarSeparator } from "controls.slint";
+import { Bridge } from "bridge.slint";
+
+// A small arrow beside a tool, for the choices that go with it.
+component ChevronButton {
+    in property <string> label;
+    callback clicked;
+
+    width: 18px;
+    height: Metrics.touch ? 40px : 32px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Glyph {
+        // ChevronDown
+        text: "\u{E70D}";
+        font-size: 9px;
+        color: Theme.text-secondary;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return || event.text == Key.DownArrow) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A colour in the highlight and draw choices.
+component Swatch {
+    in property <color> swatch;
+    in property <string> name;
+    in property <bool> chosen;
+    callback clicked;
+
+    width: 34px;
+    height: 34px;
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-checkable: true;
+    accessible-checked: root.chosen;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: 28px;
+        height: 28px;
+        border-radius: 14px;
+        background: area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Rectangle {
+        x: 7px;
+        y: 7px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: root.swatch;
+        border-width: root.chosen ? 3px : 1px;
+        border-color: root.chosen ? Theme.accent : Theme.divider;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// The page number box: 28px tall like the zoom list beside it, with the Windows 11 focus edge.
+component PageField {
+    in-out property <string> text;
+    callback accepted(string);
+
+    width: Metrics.touch ? 56px : 48px;
+    height: Metrics.touch ? 36px : 28px;
+    accessible-role: text-input;
+    accessible-label: "Page number";
+    accessible-value: root.text;
+    forward-focus: input;
+
+    Rectangle {
+        border-radius: 4px;
+        background: Theme.field;
+        border-width: 1px;
+        border-color: Theme.field-border;
+    }
+    Rectangle {
+        visible: input.has-focus;
+        y: parent.height - 2px;
+        height: 2px;
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+        background: Theme.focus;
+    }
+    input := TextInput {
+        x: 6px;
+        width: parent.width - 12px;
+        text <=> root.text;
+        font-size: Metrics.touch ? 14px : 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        single-line: true;
+        input-type: number;
+        color: Theme.text;
+        selection-background-color: Theme.accent;
+        selection-foreground-color: Theme.on-accent;
+        accepted => { root.accepted(self.text); }
+    }
+}
+
+// The zoom list, drawn as pdf.js draws its select: a filled box with the choice and a chevron.
+component ZoomSelect {
+    in property <string> text;
+    callback clicked;
+
+    width: 132px;
+    height: Metrics.touch ? 36px : 28px;
+    accessible-role: combobox;
+    accessible-label: "Zoom";
+    accessible-value: root.text;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : (Theme.dark ? #383838 : #f0f0f0);
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        Text {
+            text: root.text;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: Theme.text;
+            accessible-role: none;
+        }
+        Glyph {
+            // ChevronDown
+            text: "\u{E70D}";
+            font-size: 12px;
+        }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return || event.text == Key.DownArrow) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A small page drawn in the option tiles of the View menu.
+component Sheet inherits Rectangle {
+    in property <string> mark;
+    in property <bool> ghost;
+    background: root.ghost ? transparent : Theme.surface;
+    border-width: 1.5px;
+    border-color: root.ghost ? Theme.divider : Theme.text-secondary;
+    border-radius: 2px;
+    Text {
+        text: root.mark;
+        font-size: 9px;
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// One choice of a View menu row: a picture above its label, outlined with the accent when chosen.
+component OptionTile {
+    in property <string> label;
+    in property <string> name;
+    in property <bool> checked;
+    callback clicked;
+
+    height: Metrics.touch ? 66px : 60px;
+    horizontal-stretch: 1;
+    accessible-role: button;
+    accessible-label: root.name != "" ? root.name : root.label;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        x: 3px;
+        y: 2px;
+        width: parent.width - 6px;
+        height: parent.height - 4px;
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus || root.checked ? 2px : 0px;
+        border-color: focus.has-focus ? Theme.focus : Theme.accent;
+    }
+    Rectangle {
+        y: 6px;
+        width: parent.width;
+        height: Metrics.touch ? 36px : 32px;
+        @children
+    }
+    Text {
+        y: parent.height - 20px;
+        width: parent.width;
+        text: root.label;
+        font-size: 11px;
+        color: Theme.text;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component Toolbar inherits Rectangle {
+    // Where the find flyout hangs from, in window coordinates relative to the toolbar.
+    out property <length> find-x: middle.x;
+    in-out property <string> page-text;
+    callback open-find();
+    callback toggle-find();
+    callback focus-document();
+
+    public function focus-page-field() {
+        page-field.focus();
+    }
+
+    height: Metrics.toolbar-height;
+    background: Theme.surface;
+
+    property <length> b: Metrics.touch ? 40px : 32px;
+    // Narrow windows drop the zoom list first; its choices move into View options.
+    out property <bool> narrow: root.width < 760px;
+    // Below this width each group folds its less used buttons into its own "..." menu, like Edge.
+    property <bool> compact: root.width < 1040px;
+    // How many of the eight left-hand tools fit beside the centered middle group. The rest wait in the
+    // left "..." menu, the last one first. The widths are what the first n tools take, in order.
+    property <float> k: root.b / 32px;
+    property <length> room-all: root.center-ideal - 8px - 48px;
+    property <length> room-part: root.room-all - 50px * root.k;
+    property <int> shown: root.room-all >= 366px * root.k ? 8
+        : root.room-part >= 330px * root.k ? 7
+        : root.room-part >= 281px * root.k ? 6
+        : root.room-part >= 245px * root.k ? 5
+        : root.room-part >= 196px * root.k ? 4
+        : root.room-part >= 160px * root.k ? 3
+        : root.room-part >= 124px * root.k ? 2
+        : root.room-part >= 62px * root.k ? 1 : 0;
+    property <string> zoom-text: Bridge.zoom-mode == 0 ? "Automatic Zoom"
+        : Bridge.zoom-mode == 1 ? "Actual Size"
+        : Bridge.zoom-mode == 2 ? "Page Fit"
+        : Bridge.zoom-mode == 3 ? "Page Width"
+        : Bridge.zoom-percent + "%";
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.toolbar-border;
+    }
+
+    left := HorizontalLayout {
+        x: 4px;
+        width: self.preferred-width;
+        y: (parent.height - self.height) / 2;
+        height: root.b;
+        spacing: 4px;
+        IconButton {
+            // OpenPane
+            glyph: "\u{E8A0}";
+            label: "Toggle sidebar";
+            toggle: true;
+            checked: Bridge.sidebar-open;
+            clicked => {
+                Bridge.sidebar-open = !Bridge.sidebar-open;
+                Bridge.sidebar-toggled();
+            }
+        }
+        if root.shown >= 1: ToolbarSeparator { }
+        if root.shown >= 1: IconButton {
+            // Highlight
+            glyph: "\u{E7E6}";
+            label: "Highlight: select text to highlight it";
+            toggle: true;
+            checked: Bridge.tool == 1;
+            clicked => {
+                Bridge.tool = Bridge.tool == 1 ? 0 : 1;
+                Bridge.tool-changed();
+            }
+        }
+        if root.shown >= 1: Rectangle {
+            width: 18px;
+            ChevronButton {
+                label: "Highlight color";
+                clicked => { highlight-menu.show(); }
+            }
+            highlight-menu := PopupWindow {
+                x: 0;
+                y: parent.height + 4px;
+                width: 5 * 34px + 12px;
+                Flyout {
+                    HorizontalLayout {
+                        padding: 6px;
+                        for color[i] in Bridge.highlight-colors: Swatch {
+                            swatch: color;
+                            name: Bridge.highlight-names[i];
+                            chosen: Bridge.highlight-color == i;
+                            clicked => {
+                                Bridge.highlight-color = i;
+                                Bridge.tool = 1;
+                                Bridge.tool-changed();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if root.shown >= 2: IconButton {
+            // Draw
+            glyph: "\u{ED63}";
+            label: "Draw";
+            toggle: true;
+            checked: Bridge.tool == 2;
+            clicked => {
+                Bridge.tool = Bridge.tool == 2 ? 0 : 2;
+                Bridge.tool-changed();
+            }
+        }
+        if root.shown >= 2: Rectangle {
+            width: 18px;
+            ChevronButton {
+                label: "Drawing color and thickness";
+                clicked => { draw-menu.show(); }
+            }
+            draw-menu := PopupWindow {
+                x: 0;
+                y: parent.height + 4px;
+                width: 5 * 34px + 12px;
+                Flyout {
+                    VerticalLayout {
+                        padding: 6px;
+                        HorizontalLayout {
+                            for color[i] in Bridge.draw-colors: Swatch {
+                                swatch: color;
+                                name: Bridge.draw-names[i];
+                                chosen: Bridge.draw-color == i;
+                                clicked => {
+                                    Bridge.draw-color = i;
+                                    if (Bridge.tool != 2 && Bridge.tool != 4) {
+                                        Bridge.tool = 2;
+                                        Bridge.tool-changed();
+                                    }
+                                }
+                            }
+                        }
+                        MenuRule { }
+                        HorizontalLayout {
+                            for thickness[i] in Bridge.draw-widths: Rectangle {
+                                height: 34px;
+                                horizontal-stretch: 1;
+                                accessible-role: button;
+                                accessible-label: Bridge.draw-width-names[i];
+                                accessible-checkable: true;
+                                accessible-checked: Bridge.draw-width == i;
+                                accessible-action-default => { Bridge.draw-width = i; }
+                                Rectangle {
+                                    border-radius: 4px;
+                                    background: width-area.has-hover ? Theme.hover : transparent;
+                                    border-width: Bridge.draw-width == i ? 2px : 0px;
+                                    border-color: Theme.accent;
+                                }
+                                Rectangle {
+                                    x: 12px;
+                                    y: (parent.height - self.height) / 2;
+                                    width: parent.width - 24px;
+                                    height: thickness + 1px;
+                                    border-radius: self.height / 2;
+                                    background: Theme.text;
+                                }
+                                width-area := TouchArea {
+                                    clicked => {
+                                        Bridge.draw-width = i;
+                                        if (Bridge.tool != 2 && Bridge.tool != 4) {
+                                            Bridge.tool = 2;
+                                            Bridge.tool-changed();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if root.shown >= 3: IconButton {
+            // EraseTool
+            glyph: "\u{E75C}";
+            label: "Erase highlights, drawings and added text";
+            toggle: true;
+            checked: Bridge.tool == 3;
+            clicked => {
+                Bridge.tool = Bridge.tool == 3 ? 0 : 3;
+                Bridge.tool-changed();
+            }
+        }
+        if root.shown >= 4: IconButton {
+            // Text box
+            glyph: "\u{E8AC}";
+            label: "Add text: click where it should go";
+            toggle: true;
+            checked: Bridge.tool == 4;
+            clicked => {
+                Bridge.tool = Bridge.tool == 4 ? 0 : 4;
+                Bridge.tool-changed();
+            }
+        }
+        if root.shown >= 5: ToolbarSeparator { }
+        if root.shown >= 5: IconButton {
+            // Read aloud
+            glyph: "\u{E995}";
+            label: Bridge.speaking ? "Stop reading aloud" : "Read aloud: the selected text, or this page";
+            toggle: true;
+            checked: Bridge.speaking;
+            clicked => { Bridge.read-aloud(); }
+        }
+        if root.shown >= 6: IconButton {
+            // Translate
+            glyph: "\u{E164}";
+            label: "Translate the selected text in your browser";
+            clicked => { Bridge.translate(); }
+        }
+        if root.shown >= 7: ToolbarSeparator { }
+        if root.shown >= 7: IconButton {
+            // TVMonitor
+            glyph: "\u{E7F4}";
+            label: "Presentation mode (F5)";
+            clicked => { Bridge.toggle-presentation(); }
+        }
+        if root.shown >= 8: IconButton {
+            // Info
+            glyph: "\u{E946}";
+            label: "Document properties (Alt+Enter)";
+            clicked => { Bridge.show-properties(); }
+        }
+        if root.shown < 8: ToolbarSeparator { }
+        if root.shown < 8: Rectangle {
+            width: root.b;
+            IconButton {
+                // More
+                glyph: "\u{E712}";
+                label: "More";
+                clicked => { left-more.show(); }
+            }
+            left-more := PopupWindow {
+                x: 0;
+                y: parent.height + 4px;
+                width: 300px;
+                Flyout {
+                    VerticalLayout {
+                        padding: 6px;
+                        if root.shown < 1: MenuItem {
+                            glyph: "\u{E7E6}";
+                            label: "Highlight";
+                            checkable: true;
+                            checked: Bridge.tool == 1;
+                            clicked => {
+                                Bridge.tool = Bridge.tool == 1 ? 0 : 1;
+                                Bridge.tool-changed();
+                            }
+                        }
+                        if root.shown < 2: MenuItem {
+                            glyph: "\u{ED63}";
+                            label: "Draw";
+                            checkable: true;
+                            checked: Bridge.tool == 2;
+                            clicked => {
+                                Bridge.tool = Bridge.tool == 2 ? 0 : 2;
+                                Bridge.tool-changed();
+                            }
+                        }
+                        if root.shown < 3: MenuItem {
+                            glyph: "\u{E75C}";
+                            label: "Erase";
+                            checkable: true;
+                            checked: Bridge.tool == 3;
+                            clicked => {
+                                Bridge.tool = Bridge.tool == 3 ? 0 : 3;
+                                Bridge.tool-changed();
+                            }
+                        }
+                        if root.shown < 4: MenuItem {
+                            glyph: "\u{E8AC}";
+                            label: "Add text";
+                            checkable: true;
+                            checked: Bridge.tool == 4;
+                            clicked => {
+                                Bridge.tool = Bridge.tool == 4 ? 0 : 4;
+                                Bridge.tool-changed();
+                            }
+                        }
+                        if root.shown < 4: MenuRule { }
+                        if root.shown < 5: MenuItem {
+                            glyph: "\u{E995}";
+                            label: Bridge.speaking ? "Stop reading aloud" : "Read aloud";
+                            clicked => { Bridge.read-aloud(); }
+                        }
+                        if root.shown < 6: MenuItem {
+                            glyph: "\u{E164}";
+                            label: "Translate";
+                            clicked => { Bridge.translate(); }
+                        }
+                        if root.shown < 6: MenuRule { }
+                        if root.shown < 7: MenuItem {
+                            glyph: "\u{E7F4}";
+                            label: "Presentation mode";
+                            hint: "F5";
+                            clicked => { Bridge.toggle-presentation(); }
+                        }
+                        if root.shown < 8: MenuItem {
+                            glyph: "\u{E946}";
+                            label: "Document properties";
+                            hint: "Alt+Enter";
+                            clicked => { Bridge.show-properties(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    property <length> center-ideal: (root.width - middle.preferred-width) / 2;
+    middle := HorizontalLayout {
+        // Centered in the bar, but never over the groups at either side.
+        x: clamp(root.center-ideal, left.x + left.width + 8px, max(left.x + left.width + 8px, right.x - self.preferred-width - 8px));
+        width: self.preferred-width;
+        y: (parent.height - self.height) / 2;
+        height: root.b;
+        spacing: 4px;
+        IconButton {
+            // ChevronUp
+            glyph: "\u{E70E}";
+            label: "Previous page";
+            enabled: Bridge.current-page > 1;
+            clicked => { Bridge.page-step(-1); }
+        }
+        IconButton {
+            // ChevronDown
+            glyph: "\u{E70D}";
+            label: "Next page";
+            enabled: Bridge.current-page < Bridge.page-count;
+            clicked => { Bridge.page-step(1); }
+        }
+        VerticalLayout {
+            alignment: center;
+            page-field := PageField {
+                text <=> root.page-text;
+                accepted(text) => {
+                    Bridge.go-to-page(text);
+                    root.page-text = Bridge.current-page;
+                    root.focus-document();
+                }
+            }
+        }
+        Text {
+            text: "of " + Bridge.page-count;
+            font-size: 12px;
+            vertical-alignment: center;
+            color: Theme.text;
+        }
+        ToolbarSeparator { }
+        IconButton {
+            // Rotate
+            glyph: "\u{E7AD}";
+            label: "Rotate clockwise (R)";
+            clicked => { Bridge.rotate(1); }
+        }
+        ToolbarSeparator { }
+        IconButton {
+            // Remove
+            glyph: "\u{E738}";
+            label: "Zoom out (Ctrl+minus)";
+            enabled: Bridge.can-zoom-out;
+            clicked => { Bridge.zoom-step(-1); }
+        }
+        IconButton {
+            // Add
+            glyph: "\u{E710}";
+            label: "Zoom in (Ctrl+plus)";
+            enabled: Bridge.can-zoom-in;
+            clicked => { Bridge.zoom-step(1); }
+        }
+        if !root.narrow: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: zoom-select.width;
+                height: zoom-select.height;
+                zoom-select := ZoomSelect {
+                    text: root.zoom-text;
+                    clicked => { zoom-menu.show(); }
+                }
+                zoom-menu := PopupWindow {
+                    x: 0;
+                    y: parent.height + 4px;
+                    width: 200px;
+                    Flyout {
+                        VerticalLayout {
+                            padding: 4px;
+                            for choice[i] in ["Automatic Zoom", "Actual Size", "Page Fit", "Page Width"]: MenuItem {
+                                label: choice;
+                                checked: Bridge.zoom-mode == i;
+                                clicked => { Bridge.set-zoom(i, 0); }
+                            }
+                            MenuRule { }
+                            for pct in [50, 75, 100, 125, 150, 200, 300, 400]: MenuItem {
+                                label: pct + "%";
+                                checked: Bridge.zoom-mode == 4 && Bridge.zoom-percent == pct;
+                                clicked => { Bridge.set-zoom(4, pct / 100); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ToolbarSeparator { }
+        Rectangle {
+            width: root.b;
+            IconButton {
+                // View
+                glyph: "\u{E890}";
+                label: "View options";
+                clicked => { view-menu.show(); }
+            }
+            view-menu := PopupWindow {
+                x: parent.width - self.width;
+                y: parent.height + 4px;
+                width: 288px;
+                Flyout {
+                    VerticalLayout {
+                        padding: 4px;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            MenuHeading { text: "Scrolling"; }
+                        }
+                        HorizontalLayout {
+                            OptionTile {
+                                label: "Vertical";
+                                checked: Bridge.scroll-mode == 0;
+                                clicked => { Bridge.set-scroll-mode(0); }
+                                Sheet { x: parent.width / 2 - 6px; y: 0px; width: 12px; height: 14px; }
+                                Sheet { x: parent.width / 2 - 6px; y: 17px; width: 12px; height: 14px; }
+                            }
+                            OptionTile {
+                                label: "Horizontal";
+                                checked: Bridge.scroll-mode == 1;
+                                clicked => { Bridge.set-scroll-mode(1); }
+                                Sheet { x: parent.width / 2 - 15px; y: 4px; width: 13px; height: 22px; }
+                                Sheet { x: parent.width / 2 + 2px; y: 4px; width: 13px; height: 22px; }
+                            }
+                            OptionTile {
+                                label: "Wrapped";
+                                checked: Bridge.scroll-mode == 2;
+                                clicked => { Bridge.set-scroll-mode(2); }
+                                Sheet { x: parent.width / 2 - 14px; y: 0px; width: 12px; height: 14px; }
+                                Sheet { x: parent.width / 2 + 2px; y: 0px; width: 12px; height: 14px; }
+                                Sheet { x: parent.width / 2 - 14px; y: 17px; width: 12px; height: 14px; }
+                                Sheet { x: parent.width / 2 + 2px; y: 17px; width: 12px; height: 14px; }
+                            }
+                            OptionTile {
+                                label: "One page";
+                                name: "One page at a time";
+                                checked: Bridge.scroll-mode == 3;
+                                clicked => { Bridge.set-scroll-mode(3); }
+                                Sheet { x: parent.width / 2 - 11px; y: 1px; width: 22px; height: 30px; }
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            MenuHeading { text: "Pages"; }
+                        }
+                        HorizontalLayout {
+                            OptionTile {
+                                label: "Single";
+                                name: "Single pages";
+                                checked: Bridge.spread-mode == 0;
+                                clicked => { Bridge.set-spread-mode(0); }
+                                Sheet { x: parent.width / 2 - 11px; y: 1px; width: 22px; height: 30px; mark: "1"; }
+                            }
+                            OptionTile {
+                                label: "Two pages";
+                                name: "Two pages, odd on the left";
+                                checked: Bridge.spread-mode == 1;
+                                clicked => { Bridge.set-spread-mode(1); }
+                                Sheet { x: parent.width / 2 - 15px; y: 4px; width: 14px; height: 22px; mark: "1"; }
+                                Sheet { x: parent.width / 2 + 1px; y: 4px; width: 14px; height: 22px; mark: "2"; }
+                            }
+                            OptionTile {
+                                label: "Book view";
+                                name: "Two pages, even on the left";
+                                checked: Bridge.spread-mode == 2;
+                                clicked => { Bridge.set-spread-mode(2); }
+                                Sheet { x: parent.width / 2 - 15px; y: 4px; width: 14px; height: 22px; ghost: true; }
+                                Sheet { x: parent.width / 2 + 1px; y: 4px; width: 14px; height: 22px; mark: "1"; }
+                            }
+                            Rectangle { }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            MenuHeading { text: "Page color"; }
+                        }
+                        HorizontalLayout {
+                            for choice[i] in ["Normal", "Dark", "Sepia"]: OptionTile {
+                                label: choice;
+                                checked: Bridge.page-tone == i;
+                                clicked => { Bridge.set-tone(i); }
+                                Rectangle {
+                                    x: parent.width / 2 - 14px;
+                                    y: 1px;
+                                    width: 28px;
+                                    height: 30px;
+                                    border-radius: 2px;
+                                    border-width: 1.5px;
+                                    border-color: Theme.text-secondary;
+                                    background: i == 1 ? #1b1b1b : i == 2 ? #f4ecd8 : #ffffff;
+                                    Text {
+                                        text: "Aa";
+                                        font-size: 12px;
+                                        color: i == 1 ? #e6e6e6 : #1b1b1b;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        accessible-role: none;
+                                    }
+                                }
+                            }
+                            Rectangle { }
+                        }
+                        if root.narrow: HorizontalLayout {
+                            padding-left: 32px;
+                            MenuHeading { text: "Zoom"; }
+                        }
+                        if root.narrow: VerticalLayout {
+                            for choice[i] in ["Page width", "Page fit", "Actual size"]: MenuItem {
+                                label: choice;
+                                checked: Bridge.zoom-mode == [3, 2, 1][i];
+                                clicked => {
+                                        Bridge.set-zoom([3, 2, 1][i], 0);
+                                }
+                            }
+                        }
+                        MenuRule { }
+                        Rectangle {
+                            height: Metrics.touch ? 44px : 38px;
+                            accessible-role: button;
+                            accessible-label: "Touch layout";
+                            accessible-checkable: true;
+                            accessible-checked: Metrics.touch;
+                            accessible-action-default => { Metrics.touch = !Metrics.touch; }
+                            Rectangle {
+                                x: 4px;
+                                width: parent.width - 8px;
+                                border-radius: 4px;
+                                background: touch-area.pressed ? Theme.pressed : touch-area.has-hover ? Theme.hover : transparent;
+                            }
+                            // TouchPointer
+                            Glyph {
+                                x: 12px;
+                                width: 24px;
+                                height: parent.height;
+                                text: "\u{E7C9}";
+                                font-size: 16px;
+                            }
+                            Text {
+                                x: 44px;
+                                height: parent.height;
+                                text: "Touch layout";
+                                font-size: 13px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                            Rectangle {
+                                x: parent.width - 52px;
+                                y: (parent.height - 20px) / 2;
+                                width: 40px;
+                                height: 20px;
+                                border-radius: 10px;
+                                background: Metrics.touch ? Theme.accent : transparent;
+                                border-width: 1px;
+                                border-color: Metrics.touch ? Theme.accent : Theme.text-secondary;
+                                Rectangle {
+                                    x: Metrics.touch ? 22px : 4px;
+                                    y: 4px;
+                                    width: 12px;
+                                    height: 12px;
+                                    border-radius: 6px;
+                                    background: Metrics.touch ? Theme.on-accent : Theme.text-secondary;
+                                }
+                            }
+                            touch-area := TouchArea {
+                                clicked => { Metrics.touch = !Metrics.touch; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    right := HorizontalLayout {
+        width: self.preferred-width;
+        x: parent.width - self.width - 4px;
+        y: (parent.height - self.height) / 2;
+        height: root.b;
+        spacing: 4px;
+        IconButton {
+            // Search
+            glyph: "\u{E721}";
+            label: "Find in document (Ctrl+F)";
+            toggle: true;
+            checked: Bridge.find-open;
+            clicked => { root.toggle-find(); }
+        }
+        ToolbarSeparator { }
+        if !root.compact: IconButton {
+            // Print
+            glyph: "\u{E749}";
+            label: "Print (Ctrl+P)";
+            clicked => { Bridge.print(); }
+        }
+        if !root.compact: IconButton {
+            // Save
+            glyph: "\u{E78C}";
+            label: "Save a copy (Ctrl+S)";
+            clicked => { Bridge.save-copy(); }
+        }
+        if root.compact: Rectangle {
+            width: root.b;
+            IconButton {
+                // More
+                glyph: "\u{E712}";
+                label: "More";
+                clicked => { right-more.show(); }
+            }
+            right-more := PopupWindow {
+                x: parent.width - self.width;
+                y: parent.height + 4px;
+                width: 280px;
+                Flyout {
+                    VerticalLayout {
+                        padding: 6px;
+                        MenuItem {
+                            glyph: "\u{E749}";
+                            label: "Print";
+                            hint: "Ctrl+P";
+                            clicked => { Bridge.print(); }
+                        }
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save a copy";
+                            hint: "Ctrl+S";
+                            clicked => { Bridge.save-copy(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Find hangs under the toolbar as one row: the field, the match count, previous, next and close.
+export component FindFlyout inherits Rectangle {
+    callback focus-document();
+    callback close-find();
+    width: 360px;
+    height: Metrics.touch ? 56px : 48px;
+
+    public function focus-field() {
+        field.focus();
+        field.select-all();
+    }
+
+    Flyout {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 6px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            Rectangle {
+                horizontal-stretch: 1;
+                Text {
+                    visible: field.text == "";
+                    text: "Find in document";
+                    font-size: 13px;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                    height: parent.height;
+                }
+                field := TextInput {
+                    width: parent.width;
+                    height: parent.height;
+                    text <=> Bridge.find-text;
+                    font-size: 13px;
+                    single-line: true;
+                    vertical-alignment: center;
+                    color: Bridge.find-not-found ? (Theme.dark ? #ff99a4 : #c42b1c) : Theme.text;
+                    selection-background-color: Theme.accent;
+                    selection-foreground-color: Theme.on-accent;
+                    accessible-label: "Find in document";
+                    edited => { Bridge.find-changed(self.text); }
+                    accepted => { Bridge.find-step(1); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Escape) {
+                            root.close-find();
+                            return accept;
+                        }
+                        if (event.text == Key.F3) {
+                            Bridge.find-step(event.modifiers.shift ? -1 : 1);
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
+            Text {
+                visible: Bridge.find-text != "";
+                text: Bridge.find-current + "/" + Bridge.find-total + (Bridge.find-more ? "+" : "");
+                font-size: 12px;
+                color: Bridge.find-not-found ? (Theme.dark ? #ff99a4 : #c42b1c) : Theme.text-secondary;
+                vertical-alignment: center;
+                accessible-label: Bridge.find-status;
+            }
+            ToolbarSeparator { }
+            IconButton {
+                glyph: "\u{E70E}";
+                label: "Previous result (Shift+F3)";
+                enabled: Bridge.find-has-hits;
+                clicked => { Bridge.find-step(-1); }
+            }
+            IconButton {
+                glyph: "\u{E70D}";
+                label: "Next result (F3)";
+                enabled: Bridge.find-has-hits;
+                clicked => { Bridge.find-step(1); }
+            }
+            IconButton {
+                // Cancel
+                glyph: "\u{E711}";
+                label: "Close find (Esc)";
+                clicked => { root.close-find(); }
+            }
+        }
+    }
+}

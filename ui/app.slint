@@ -1,0 +1,322 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette } from "std-widgets.slint";
+import { Theme, Metrics, Glyph, Tip } from "theme.slint";
+import { IconButton, Flyout } from "controls.slint";
+import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow } from "bridge.slint";
+import { TitleBar } from "titlebar.slint";
+import { Toolbar, FindFlyout } from "toolbar.slint";
+import { Sidebar, PageArea } from "viewer.slint";
+import { Home } from "home.slint";
+import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
+
+export { Bridge, Theme, Metrics, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow }
+
+export component AppWindow inherits Window {
+    title: Bridge.doc-title == "" ? "Baca PDF" : Bridge.doc-title + " - Baca PDF";
+    preferred-width: 1100px;
+    preferred-height: 820px;
+    // Fixed limits: a limit that follows the content makes Windows grow the window on each change.
+    min-width: 640px;
+    min-height: 400px;
+    max-width: 100000px;
+    max-height: 100000px;
+    background: Theme.bar;
+    default-font-family: "Segoe UI Variable Text";
+    default-font-size: Metrics.font;
+    forward-focus: keys;
+
+    // Slint's own widgets (scroll bars, the spinner) follow the same light or dark choice.
+    property <bool> dark: Theme.dark;
+    changed dark => { Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light; }
+    init => { Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light; }
+
+    property <bool> reading: Bridge.state != DocState.empty;
+    property <bool> chrome: !Bridge.presenting;
+    property <string> page-text: Bridge.current-page;
+    changed page-text => { toolbar.page-text = self.page-text; }
+
+    function open-find() {
+        Bridge.find-open = true;
+        find.focus-field();
+    }
+    function close-find() {
+        Bridge.find-open = false;
+        Bridge.find-closed();
+        keys.focus();
+    }
+    function copy() {
+        if (Bridge.copy-selection()) {
+            Bridge.notice = "Copied";
+            notice-timer.running = true;
+        }
+    }
+
+    // Every notice stays for a few seconds, and a newer one restarts the wait.
+    property <string> notice-now: Bridge.notice;
+    changed notice-now => {
+        notice-timer.running = false;
+        if (self.notice-now != "") {
+            notice-timer.running = true;
+        }
+    }
+    notice-timer := Timer {
+        interval: 3500ms;
+        running: false;
+        triggered => {
+            Bridge.notice = "";
+            self.running = false;
+        }
+    }
+
+    keys := FocusScope {
+        // The window sets its own limits; what is inside must not feed back into them.
+        min-width: 0px;
+        preferred-width: 0px;
+        max-width: 100000px;
+        min-height: 0px;
+        preferred-height: 0px;
+        max-height: 100000px;
+        key-pressed(event) => {
+            if (event.text == Key.F11) { Bridge.toggle-fullscreen(); return accept; }
+            if (event.text == Key.F1) { Bridge.shortcuts-open = true; return accept; }
+            if (event.text == Key.Escape) {
+                if (Bridge.presenting) { Bridge.toggle-presentation(); return accept; }
+                if (Bridge.find-open) { root.close-find(); return accept; }
+                if (Bridge.tool != 0) { Bridge.tool = 0; Bridge.tool-changed(); return accept; }
+                if (Bridge.fullscreen) { Bridge.toggle-fullscreen(); return accept; }
+                Bridge.clear-selection();
+                return accept;
+            }
+            if (event.modifiers.control) {
+                if (event.text == "o" || event.text == "O") { Bridge.open-file(); return accept; }
+                if (event.text == "t" || event.text == "T") { Bridge.select-tab(-1); return accept; }
+                if (event.text == "w" || event.text == "W" || event.text == Key.F4) { Bridge.close-active-tab(); return accept; }
+                if (event.text == Key.Tab || event.text == Key.Backtab) { Bridge.cycle-tab(event.modifiers.shift ? -1 : 1); return accept; }
+                if (event.text == "d" || event.text == "D") { Bridge.tab-favorite(Bridge.active-tab); return accept; }
+                if (Bridge.state != DocState.ready) { return reject; }
+                if (event.text == "f" || event.text == "F") { root.open-find(); return accept; }
+                if (event.text == "c" || event.text == "C") { root.copy(); return accept; }
+                if (event.text == "a" || event.text == "A") { Bridge.select-page(); return accept; }
+                if (event.text == "b" || event.text == "B") { Bridge.toggle-bookmark(); return accept; }
+                if (event.text == "p" || event.text == "P") { Bridge.print(); return accept; }
+                if (event.text == "s" || event.text == "S") { Bridge.save-copy(); return accept; }
+                if (event.text == "=" || event.text == "+") { Bridge.zoom-step(1); return accept; }
+                if (event.text == "-") { Bridge.zoom-step(-1); return accept; }
+                if (event.text == "0") { Bridge.set-zoom(3, 0); return accept; }
+                if (event.text == Key.Home) { Bridge.scroll-to-edge(false); return accept; }
+                if (event.text == Key.End) { Bridge.scroll-to-edge(true); return accept; }
+                if (event.text == "g" || event.text == "G") { toolbar.focus-page-field(); return accept; }
+                return reject;
+            }
+            if (Bridge.state != DocState.ready) { return reject; }
+            if (event.modifiers.alt && event.text == Key.Return) { Bridge.show-properties(); return accept; }
+            if (event.modifiers.alt && event.text == Key.LeftArrow) { Bridge.history-step(-1); return accept; }
+            if (event.modifiers.alt && event.text == Key.RightArrow) { Bridge.history-step(1); return accept; }
+            if (event.text == Key.F5) { Bridge.toggle-presentation(); return accept; }
+            if (event.text == Key.F3) { Bridge.find-step(event.modifiers.shift ? -1 : 1); return accept; }
+            if (event.text == "r") { Bridge.rotate(1); return accept; }
+            if (event.text == "R") { Bridge.rotate(-1); return accept; }
+            if (Bridge.presenting || Bridge.scroll-mode == 3) {
+                if (event.text == Key.RightArrow || event.text == Key.DownArrow || event.text == Key.PageDown || event.text == " ") { Bridge.page-step(event.modifiers.shift && event.text == " " ? -1 : 1); return accept; }
+                if (event.text == Key.LeftArrow || event.text == Key.UpArrow || event.text == Key.PageUp) { Bridge.page-step(-1); return accept; }
+            }
+            if (event.text == Key.DownArrow) { Bridge.scroll-by(56px); return accept; }
+            if (event.text == Key.UpArrow) { Bridge.scroll-by(-56px); return accept; }
+            if (event.text == Key.PageDown || (event.text == " " && !event.modifiers.shift)) { Bridge.scroll-by(Bridge.viewport-height - 56px); return accept; }
+            if (event.text == Key.PageUp || (event.text == " " && event.modifiers.shift)) { Bridge.scroll-by(56px - Bridge.viewport-height); return accept; }
+            if (event.text == Key.Home) { Bridge.scroll-to-edge(false); return accept; }
+            if (event.text == Key.End) { Bridge.scroll-to-edge(true); return accept; }
+            reject
+        }
+
+        VerticalLayout {
+            // In full screen the title bar leaves the layout and slides down over the page instead.
+            if root.chrome && !Bridge.fullscreen: TitleBar { }
+
+            toolbar := Toolbar {
+                visible: root.reading && root.chrome;
+                height: self.visible ? Metrics.toolbar-height : 0px;
+                toggle-find => {
+                    if (Bridge.find-open) { root.close-find(); } else { root.open-find(); }
+                }
+                focus-document => { keys.focus(); }
+            }
+
+            if root.reading: HorizontalLayout {
+                if !Bridge.drawer: Sidebar {
+                    visible: Bridge.sidebar-open && root.chrome && Bridge.state == DocState.ready;
+                    width: self.visible ? max(Bridge.sidebar-width, Metrics.touch ? 240px : 0px) : 0px;
+                }
+                PageArea {
+                    horizontal-stretch: 1;
+                    focus-document => { keys.focus(); }
+                    copy => { root.copy(); }
+                }
+            }
+
+            if !root.reading: Home {
+                vertical-stretch: 1;
+                show-shortcuts => { Bridge.shortcuts-open = true; }
+                show-about => { Bridge.about-open = true; }
+            }
+        }
+    }
+
+    // Full screen: the bar slides down when the pointer touches the top edge.
+    if Bridge.fullscreen && root.chrome: reveal := TouchArea {
+        y: 0;
+        height: self.has-hover ? Metrics.title-height : 4px;
+        TitleBar {
+            y: reveal.has-hover ? 0 : -self.height;
+            animate y { duration: 140ms; easing: ease-out; }
+            drop-shadow-blur: 12px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000033;
+        }
+    }
+
+    // Drag the edge of the side panel to make it wider or narrower.
+    // Narrow windows show the side panel over the page, and picking a page closes it.
+    property <int> page-now: Bridge.current-page;
+    changed page-now => {
+        if (Bridge.drawer && Bridge.sidebar-open) {
+            Bridge.sidebar-open = false;
+            Bridge.sidebar-toggled();
+        }
+    }
+    if Bridge.drawer && Bridge.sidebar-open && root.reading && root.chrome && Bridge.state == DocState.ready: Rectangle {
+        x: 0px;
+        y: toolbar.y + toolbar.height;
+        width: root.width;
+        height: root.height - self.y;
+        TouchArea {
+            clicked => {
+                Bridge.sidebar-open = false;
+                Bridge.sidebar-toggled();
+            }
+        }
+        Sidebar {
+            x: 0px;
+            width: min(300px, root.width - 56px);
+            height: parent.height;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-x: 4px;
+            drop-shadow-color: #00000040;
+        }
+    }
+    if !Bridge.drawer && Bridge.sidebar-open && root.reading && root.chrome && Bridge.state == DocState.ready: TouchArea {
+        x: max(Bridge.sidebar-width, Metrics.touch ? 240px : 0px) - 3px;
+        y: toolbar.y + toolbar.height;
+        width: 7px;
+        height: root.height - self.y;
+        mouse-cursor: MouseCursor.col-resize;
+        moved => {
+            if (self.pressed) {
+                Bridge.sidebar-width = clamp(Bridge.sidebar-width + self.mouse-x - 3px, 160px, 480px);
+            }
+        }
+    }
+
+    find := FindFlyout {
+        visible: Bridge.find-open && Bridge.state == DocState.ready && root.chrome;
+        x: max(8px, root.width - self.width - 12px);
+        y: toolbar.y + toolbar.height + 4px;
+        close-find => { root.close-find(); }
+    }
+
+    if Bridge.notice != "": Flyout {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - 24px;
+        width: notice-row.preferred-width;
+        height: notice-row.preferred-height;
+        notice-row := HorizontalLayout {
+            padding: 6px;
+            padding-left: 16px;
+            spacing: 12px;
+            Glyph {
+                // Info
+                text: "\u{E946}";
+                color: Theme.accent;
+            }
+            Text {
+                text: Bridge.notice;
+                vertical-alignment: center;
+                color: Theme.text;
+                accessible-role: text;
+            }
+            IconButton {
+                glyph: "\u{E711}";
+                glyph-size: 12px;
+                label: "Dismiss";
+                clicked => { Bridge.notice = ""; }
+            }
+        }
+    }
+
+    if Bridge.drop-hover: Rectangle {
+        y: Metrics.title-height;
+        height: root.height - Metrics.title-height;
+        background: Theme.bar.with-alpha(0.7);
+        Flyout {
+            width: drop-row.preferred-width;
+            height: drop-row.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-width: 2px;
+            border-color: Theme.accent;
+            drop-row := HorizontalLayout {
+                padding: 20px;
+                padding-left: 28px;
+                padding-right: 28px;
+                spacing: 12px;
+                Glyph {
+                    text: "\u{E8E5}";
+                    font-size: 24px;
+                    color: Theme.accent;
+                }
+                Text {
+                    text: "Drop PDF files to open them";
+                    font-size: 16px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+            }
+        }
+    }
+
+    if Bridge.properties-open: PropertiesDialog { }
+    if Bridge.shortcuts-open: ShortcutsDialog { }
+    if Bridge.about-open: AboutDialog { }
+    if Bridge.confirm-open: ConfirmDialog { }
+
+    // The tooltip of whichever button the pointer rests on, kept inside the window.
+    if Tip.on: Rectangle {
+        width: tip-label.preferred-width + 16px;
+        height: tip-label.preferred-height + 10px;
+        x: clamp(Tip.x - self.width / 2, 6px, root.width - self.width - 6px);
+        y: min(Tip.y, root.height - self.height - 6px);
+        background: Theme.surface;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.menu-border;
+        drop-shadow-blur: 8px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000024;
+        tip-label := Text {
+            text: Tip.text;
+            font-size: 12px;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            accessible-role: none;
+        }
+    }
+    // A tooltip never outlives a few seconds, even if its button vanished while it was up.
+    Timer {
+        interval: 4s;
+        running: Tip.on;
+        triggered => { Tip.on = false; }
+    }
+}
