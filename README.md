@@ -27,10 +27,41 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **One window**: opening several PDFs from Explorer, or launching the program again, sends the files to the window that is already open as tabs.
 - Keyboard shortcuts are listed in the app (F1).
 
-## Not built yet
+## To do
 
-- Form filling, signatures, stamps and comments. Added text uses a built-in Latin font.
+Ideas, not promises. The first group is what is known to be missing.
+
+**Missing now**
+- Form filling and signatures; stamps and comments.
+- A floating translation card inside the app, instead of opening the browser.
 - Registering itself as the default `.pdf` program. Windows must be told once, in Settings, to open PDFs with Baca PDF.
+- Added text uses a built-in Latin font, so other scripts do not show.
+
+**Annotation**
+- Undo and redo (Ctrl+Z) for highlights, drawings and text.
+- A Save that writes into the original file, with a backup, next to Save a copy.
+- Underline, strikethrough, shapes and sticky notes; move and resize what was added; a list of annotations in the side panel.
+- Pen pressure and palm rejection on tablets.
+
+**Reading**
+- Drag tabs to reorder them, pin tabs, reopen a closed tab (Ctrl+Shift+T), and split view for two documents side by side.
+- Search across every open tab, and across recent files.
+- Names and notes for page bookmarks.
+- Zoom to a dragged rectangle, kinetic scrolling on touch, and auto-scroll.
+- A laser pointer and a blank screen in presentation mode.
+- Read aloud that follows the text and lets you pick the voice and speed.
+- OCR for scanned pages with the text recognition built into Windows, so they become searchable.
+
+**Home and Windows**
+- Search, sort and group the recent files; a first-page thumbnail on each.
+- Jump list entries for recent files on the taskbar icon.
+- A one-click shortcut to the Windows default apps settings.
+- An Indonesian interface and a Windows high contrast theme.
+- A check for new releases.
+
+**Pages**
+- Reorder, delete, rotate, extract and merge pages, and export pages as images.
+- A print preview with a page range.
 
 ## Where it keeps its data
 
