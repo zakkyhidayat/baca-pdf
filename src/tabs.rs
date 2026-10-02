@@ -144,6 +144,10 @@ impl Viewer {
         }
         let tab = self.tabs.remove(index);
         self.renderer.close(tab.id);
+        self.closed.push((tab.path.clone(), tab.spot.page + 1));
+        if self.closed.len() > 20 {
+            self.closed.remove(0);
+        }
         let next = match self.active {
             Some(a) if a > index => Some(a - 1),
             Some(a) => Some(a),
@@ -167,6 +171,34 @@ impl Viewer {
         self.tabs.push(kept);
         self.active = None;
         self.activate(ui, Some(0));
+    }
+
+    /// Moves a tab to another place in the strip, keeping the same tab in front.
+    pub(crate) fn move_tab(&mut self, ui: &AppWindow, from: usize, to: usize) {
+        if from >= self.tabs.len() || to >= self.tabs.len() || from == to {
+            return;
+        }
+        let front = self.active.map(|a| self.tabs[a].id);
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = front.and_then(|id| self.tabs.iter().position(|t| t.id == id));
+        self.sync_ui(ui);
+        self.save_session(ui);
+    }
+
+    /// Ctrl+Shift+PageUp and Ctrl+Shift+PageDown.
+    pub(crate) fn move_active_tab(&mut self, ui: &AppWindow, step: i32) {
+        let Some(a) = self.active else { return };
+        let to = (a as i32 + step).clamp(0, self.tabs.len() as i32 - 1) as usize;
+        self.move_tab(ui, a, to);
+    }
+
+    /// Ctrl+Shift+T: the tab closed last comes back where it was reading.
+    pub(crate) fn reopen_closed_tab(&mut self, ui: &AppWindow) {
+        match self.closed.pop() {
+            Some((path, page)) => self.open_at(ui, path, Some(page)),
+            None => self.notify(ui, "There is no closed tab to reopen."),
+        }
     }
 
     pub(crate) fn cycle_tab(&mut self, ui: &AppWindow, step: i32) {

@@ -90,6 +90,8 @@ struct Viewer {
     save_continue: Option<u64>,
     token: u64,
     speaker: Option<platform::Speaker>,
+    /// Tabs closed lately, newest last, as file and 1-based page, for Ctrl+Shift+T.
+    closed: Vec<(PathBuf, usize)>,
     /// Pages left by following a link, for Alt+Left and Alt+Right.
     back: Vec<usize>,
     forward: Vec<usize>,
@@ -253,6 +255,7 @@ fn main() -> Result<(), slint::PlatformError> {
             save_continue: None,
             token: 0,
             speaker: None,
+            closed: Vec::new(),
             back: Vec::new(),
             forward: Vec::new(),
             doc: None,
@@ -299,6 +302,9 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         })
     });
+    b.on_move_tab(|from, to| with_viewer(|viewer, ui| viewer.move_tab(ui, from.max(0) as usize, to.max(0) as usize)));
+    b.on_move_tab_by(|step| with_viewer(|viewer, ui| viewer.move_active_tab(ui, step)));
+    b.on_reopen_closed_tab(|| with_viewer(|viewer, ui| viewer.reopen_closed_tab(ui)));
     b.on_cycle_tab(|step| with_viewer(|viewer, ui| viewer.cycle_tab(ui, step)));
     b.on_tab_favorite(|i| {
         with_viewer(|viewer, ui| {
