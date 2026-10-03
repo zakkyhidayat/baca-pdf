@@ -531,7 +531,7 @@ export component Toolbar inherits Rectangle {
                     clicked => { zoom-menu.show(); }
                 }
                 zoom-menu := PopupWindow {
-                    x: 0;
+                    x: max(root.absolute-position.x + 8px, min(root.absolute-position.x + root.width - 8px - self.width, parent.absolute-position.x + (parent.width - self.width) / 2)) - parent.absolute-position.x;
                     y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                     width: 200px;
                     Flyout {
@@ -563,7 +563,7 @@ export component Toolbar inherits Rectangle {
                 clicked => { view-menu.show(); }
             }
             view-menu := PopupWindow {
-                x: root.absolute-position.x + root.width - 8px - self.width - parent.absolute-position.x;
+                x: max(root.absolute-position.x + 8px, min(root.absolute-position.x + root.width - 8px - self.width, parent.absolute-position.x + (parent.width - self.width) / 2)) - parent.absolute-position.x;
                 y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                 width: 288px;
                 Flyout {
