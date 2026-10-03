@@ -431,6 +431,13 @@ fn main() -> Result<(), slint::PlatformError> {
             viewer.renderer.edit(render::EditJob::DeleteAnnotation { doc, page: page.max(0) as usize, index: index.max(0) as usize });
         })
     });
+    b.on_recolor_annotation(|page, index, color| {
+        with_viewer(|viewer, _ui| {
+            let Some(doc) = viewer.active_id() else { return };
+            let color = annotate::HIGHLIGHT_COLORS[(color.max(0) as usize).min(4)];
+            viewer.renderer.edit(render::EditJob::SetColor { doc, page: page.max(0) as usize, index: index.max(0) as usize, color });
+        })
+    });
     b.on_go_page(|page| with_viewer(|viewer, ui| viewer.go_to(ui, page.max(0) as usize, 0.0)));
     b.on_page_step(|step| with_viewer(|viewer, ui| viewer.page_step(ui, step)));
     b.on_go_to_page(|text| {

@@ -102,6 +102,8 @@ pub struct AnnotRow {
     pub fy: f32,
     /// Left, top, right and bottom as fractions of the page, for clicking on it.
     pub rect: [f32; 4],
+    /// Who made it and when, as far as the file says.
+    pub info: String,
 }
 
 /// Where a link inside a page leads.
@@ -126,6 +128,7 @@ pub enum EditJob {
     SetBounds { doc: u64, page: usize, index: usize, rect: [f32; 4] },
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
     DeleteAnnotation { doc: u64, page: usize, index: usize },
+    SetColor { doc: u64, page: usize, index: usize, color: [u8; 3] },
     Undo { doc: u64 },
     Redo { doc: u64 },
 }
@@ -143,6 +146,7 @@ impl EditJob {
             | EditJob::ListAnnotations { doc }
             | EditJob::SetNote { doc, .. }
             | EditJob::SetBounds { doc, .. }
+            | EditJob::SetColor { doc, .. }
             | EditJob::Undo { doc }
             | EditJob::Redo { doc }
             | EditJob::Note { doc, .. }
@@ -453,6 +457,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     EditJob::Highlight { .. } | EditJob::Ink { .. } | EditJob::Note { .. } => Some(history.create(document, job.clone())),
                     EditJob::DeleteAnnotation { page, index, .. } => Some(history.delete(document, *page, *index)),
                     EditJob::SetBounds { page, index, rect, .. } => Some(history.set_bounds(document, *page, *index, *rect)),
+                    EditJob::SetColor { page, index, color, .. } => Some(history.set_color(document, *page, *index, *color)),
                     EditJob::SetNote { page, index, text, .. } => Some(history.set_note(document, *page, *index, text)),
                     EditJob::Undo { .. } => Some(history.step(document, true)),
                     EditJob::Redo { .. } => Some(history.step(document, false)),
@@ -508,8 +513,8 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         let (pages, message) = split(set_bounds(document, page, index, rect).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
                     }
-                    EditJob::Undo { .. } | EditJob::Redo { .. } => {}
-                    EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document) }),
+                    EditJob::Undo { .. } | EditJob::Redo { .. } | EditJob::SetColor { .. } => {}
+                    EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document, history) }),
                     EditJob::DeleteAnnotation { page, index, .. } => {
                         let (pages, message) = split(delete_annotation(document, page, index).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
@@ -920,9 +925,43 @@ fn save_original<'a>(
     Ok(kept)
 }
 
-fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
+/// "Name, 2026-10-03" from what the file records, with whatever part is missing left out.
+fn made_by(annotation: &PdfPageAnnotation) -> String {
+    let who = annotation.creator().map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    let when = annotation.creation_date().or_else(|| annotation.modification_date()).and_then(|d| {
+        let digits: String = d.trim_start_matches("D:").chars().take_while(|c| c.is_ascii_digit()).collect();
+        (digits.len() >= 8).then(|| format!("{}-{}-{}", &digits[0..4], &digits[4..6], &digits[6..8]))
+    });
+    match (who, when) {
+        (Some(w), Some(d)) => format!("{w}, {d}"),
+        (Some(w), None) => w,
+        (None, Some(d)) => d,
+        (None, None) => String::new(),
+    }
+}
+
+/// The name written on what is added here: the Windows user name.
+fn author() -> String {
+    std::env::var("USERNAME").unwrap_or_default()
+}
+
+/// Records who made an annotation, and when.
+macro_rules! stamp {
+    ($annotation:expr) => {{
+        let now = chrono::Utc::now();
+        let name = author();
+        if !name.is_empty() {
+            let _ = $annotation.set_creator(&name);
+        }
+        let _ = $annotation.set_creation_date(now);
+        let _ = $annotation.set_modification_date(now);
+    }};
+}
+
+fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) -> Vec<AnnotRow> {
     let mut rows = Vec::new();
     for (p, page) in document.pages().iter().enumerate() {
+        history.sync(document, p);
         let height = page.height().value.max(1.0);
         let width = page.width().value.max(1.0);
         let text = page.text().ok();
@@ -955,7 +994,8 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
             // The real color is not read: for an annotation that has an appearance stream (every one after
             // a save) the library asks PDFium about the wrong object and crashes. A color by kind is shown.
             let color = match kind {
-                "Highlight" | "Note" => [255, 214, 10],
+                "Highlight" => history.color_of(p, i).unwrap_or([255, 214, 10]),
+                "Note" => [255, 214, 10],
                 "Drawing" | "Shape" => [226, 24, 46],
                 _ => [32, 32, 32],
             };
@@ -966,7 +1006,7 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
                 bounds.right().value / width,
                 1.0 - bounds.bottom().value / height,
             ];
-            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy, rect });
+            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy, rect, info: made_by(&annotation) });
         }
     }
     rows
@@ -988,6 +1028,7 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
         .set_bounds(PdfRect::new(PdfPoints::new(y - 24.0), PdfPoints::new(x), PdfPoints::new(y), PdfPoints::new(x + 24.0)))
         .map_err(|e| describe(&e))?;
     annotation.set_stroke_color(pdf_color([255, 214, 10])).map_err(|e| describe(&e))?;
+    stamp!(annotation);
     Ok(index)
 }
 
@@ -1029,6 +1070,15 @@ pub(crate) fn set_note(document: &PdfDocument, index: usize, annotation: usize, 
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
     let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
     found.set_contents(text).map_err(|e| describe(&e))?;
+    let _ = found.set_modification_date(chrono::Utc::now());
+    Ok(index)
+}
+
+pub(crate) fn set_color(document: &PdfDocument, index: usize, annotation: usize, color: [u8; 3]) -> Result<usize, String> {
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
+    found.set_stroke_color(pdf_color(color)).map_err(|e| describe(&e))?;
+    let _ = found.set_modification_date(chrono::Utc::now());
     Ok(index)
 }
 
@@ -1084,6 +1134,7 @@ fn edit_highlight(document: &PdfDocument, pieces: &[SelectPiece], turns: u8, col
                         .map_err(|e| describe(&e))?;
                 }
                 annotation.set_stroke_color(pdf_color(color)).map_err(|e| describe(&e))?;
+                stamp!(annotation);
             }};
         }
         match style {
@@ -1122,6 +1173,7 @@ fn edit_ink(document: &PdfDocument, index: usize, turns: u8, points: &[[f32; 2]]
         .map_err(|e| describe(&e))?;
     let rgb = pdf_color(color);
     annotation.set_stroke_color(rgb).map_err(|e| describe(&e))?;
+    stamp!(annotation);
     for pair in pts.windows(2) {
         annotation
             .objects_mut()

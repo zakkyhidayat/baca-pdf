@@ -222,11 +222,54 @@ component AnnotationEntry inherits Rectangle {
         border-width: 1px;
         border-color: Theme.divider;
     }
+    // A highlight's color can be changed from the dot.
+    if root.item.kind == "Highlight": Rectangle {
+        x: 6px;
+        y: 14px;
+        width: 28px;
+        height: 28px;
+        border-radius: 14px;
+        accessible-role: button;
+        accessible-label: "Change the color of this highlight";
+        accessible-action-default => { recolor-menu.show(); }
+        background: dot-area.has-hover ? Theme.hover : transparent;
+        dot-area := TouchArea {
+            clicked => { recolor-menu.show(); }
+        }
+    }
+    recolor-menu := PopupWindow {
+        x: 6px;
+        y: parent.height - 4px;
+        Flyout {
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 2px;
+                for c[i] in Bridge.highlight-colors: Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    accessible-role: button;
+                    accessible-label: Bridge.highlight-names[i];
+                    accessible-action-default => { Bridge.recolor-annotation(root.item.page, root.item.index, i); }
+                    Rectangle {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 10px;
+                        background: c;
+                        border-width: 1px;
+                        border-color: Theme.divider;
+                    }
+                    TouchArea {
+                        clicked => { Bridge.recolor-annotation(root.item.page, root.item.index, i); }
+                    }
+                }
+            }
+        }
+    }
     Text {
         x: 36px;
         y: 8px;
         width: parent.width - 36px - 44px;
-        text: root.item.kind + " \u{00B7} Page " + (root.item.page + 1);
+        text: root.item.kind + " \u{00B7} Page " + (root.item.page + 1) + (root.item.info == "" ? "" : " \u{00B7} " + root.item.info);
         font-size: 12px;
         color: Theme.text-secondary;
         overflow: elide;

@@ -76,6 +76,7 @@ export struct AnnotationRow {
     preview: string,
     color: color,
     fy: float,
+    info: string,
 }
 
 export struct PropRow {
@@ -311,6 +312,7 @@ export global Bridge {
     in-out property <length> zr-h;
     callback zoom-to-rect(length, length, length, length);
     in-out property <[AnnotationRow]> annotations;
+    callback recolor-annotation(int, int, int);
     callback go-annotation(int, float);
     callback delete-annotation(int, int);
     // 0 pen, 1 rectangle, 2 ellipse, 3 line, 4 arrow.

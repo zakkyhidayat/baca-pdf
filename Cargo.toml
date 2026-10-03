@@ -7,6 +7,7 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["now"] }
 pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "thread_safe"] }
 windows = { version = "0.62", features = [
     "Win32_Foundation",

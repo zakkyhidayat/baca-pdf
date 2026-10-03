@@ -480,6 +480,7 @@ impl Viewer {
                 preview: r.preview.into(),
                 color: slint::Color::from_rgb_u8(r.color[0], r.color[1], r.color[2]),
                 fy: r.fy,
+                info: r.info.into(),
             })
             .collect();
         self.annot_model.set_vec(rows);

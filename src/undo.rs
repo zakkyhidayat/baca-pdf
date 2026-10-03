@@ -21,6 +21,7 @@ enum Entry {
     Deleted { id: u64, rect: [f32; 4] },
     Moved { id: u64, from: [f32; 4], to: [f32; 4] },
     Text { id: u64, from: String, to: String },
+    Color { id: u64, from: [u8; 3], to: [u8; 3] },
 }
 
 #[derive(Default)]
@@ -56,13 +57,44 @@ fn rect_of(document: &PdfDocument, page: usize, index: usize) -> Option<[f32; 4]
 }
 
 impl History {
-    fn sync(&mut self, document: &PdfDocument, page: usize) {
+    pub fn sync(&mut self, document: &PdfDocument, page: usize) {
         let n = count(document, page);
         let list = self.ids.entry(page).or_default();
         while list.len() < n {
             self.next += 1;
             list.push(self.next);
         }
+    }
+
+    /// The color a highlight made in this session was given, if this is one.
+    pub fn color_of(&self, page: usize, index: usize) -> Option<[u8; 3]> {
+        let id = self.ids.get(&page)?.get(index)?;
+        match self.made.get(id)? {
+            EditJob::Highlight { color, .. } => Some(*color),
+            _ => None,
+        }
+    }
+
+    fn set_made_color(&mut self, id: u64, to: [u8; 3]) {
+        if let Some(EditJob::Highlight { color, .. }) = self.made.get_mut(&id) {
+            *color = to;
+        }
+    }
+
+    pub fn set_color(&mut self, document: &PdfDocument, page: usize, index: usize, to: [u8; 3]) -> Result<Vec<usize>, String> {
+        self.sync(document, page);
+        let id = *self.ids.get(&page).and_then(|l| l.get(index)).ok_or("That annotation is not there any more.")?;
+        let from = self.color_of(page, index);
+        render::set_color(document, page, index, to)?;
+        match from {
+            Some(from) => {
+                self.set_made_color(id, to);
+                self.push(Entry::Color { id, from, to });
+            }
+            // Its old color is not known, so this cannot be taken back.
+            None => self.redo.clear(),
+        }
+        Ok(vec![page])
     }
 
     fn locate(&self, id: u64) -> Option<(usize, usize)> {
@@ -194,6 +226,14 @@ impl History {
                     }
                 }
                 Entry::Moved { id, from, to, .. } => pages.extend(self.set_rect(document, *id, if undo { *from } else { *to })?),
+                Entry::Color { id, from, to } => {
+                    if let Some((page, index)) = self.locate(*id) {
+                        let color = if undo { *from } else { *to };
+                        render::set_color(document, page, index, color)?;
+                        self.set_made_color(*id, color);
+                        pages.push(page);
+                    }
+                }
                 Entry::Text { id, from, to, .. } => {
                     if let Some((page, index)) = self.locate(*id) {
                         render::set_note(document, page, index, if undo { from } else { to })?;
@@ -231,6 +271,7 @@ impl History {
             Entry::Deleted { id, .. } => format!("removing a {}", kind(*id)),
             Entry::Moved { .. } => "moving or resizing".to_string(),
             Entry::Text { .. } => "editing a note".to_string(),
+            Entry::Color { .. } => "changing a color".to_string(),
         }
     }
 
