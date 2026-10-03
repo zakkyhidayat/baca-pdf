@@ -323,109 +323,91 @@ export component Toolbar inherits Rectangle {
             }
         }
         if root.shown >= 1: ToolbarSeparator { }
-        if root.shown >= 1: IconButton {
-            // Highlight
-            glyph: "\u{E7E6}";
-            label: "Highlight: select text to highlight it";
-            toggle: true;
-            checked: Bridge.tool == 1;
-            clicked => {
-                Bridge.tool = Bridge.tool == 1 ? 0 : 1;
-                Bridge.tool-changed();
-            }
-        }
         if root.shown >= 1: Rectangle {
-            width: 18px;
-            ChevronButton {
-                label: "Highlight color";
-                clicked => { highlight-menu.show(); }
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.toolbar-border;
+            width: group-1.preferred-width;
+            group-1 := HorizontalLayout {
+                spacing: 0px;
+            IconButton {
+                // Highlight
+                glyph: "\u{E7E6}";
+                label: "Highlight: select text to highlight it";
+                toggle: true;
+                checked: Bridge.tool == 1;
+                clicked => {
+                    Bridge.tool = Bridge.tool == 1 ? 0 : 1;
+                    Bridge.tool-changed();
+                }
             }
-            highlight-menu := PopupWindow {
-                x: 0;
-                y: parent.height + 4px;
-                width: 5 * 34px + 12px;
-                Flyout {
-                    HorizontalLayout {
-                        padding: 6px;
-                        for color[i] in Bridge.highlight-colors: Swatch {
-                            swatch: color;
-                            name: Bridge.highlight-names[i];
-                            chosen: Bridge.highlight-color == i;
-                            clicked => {
-                                Bridge.highlight-color = i;
-                                Bridge.tool = 1;
-                                Bridge.tool-changed();
+            Rectangle {
+                width: 18px;
+                ChevronButton {
+                    label: "Highlight color";
+                    clicked => { highlight-menu.show(); }
+                }
+                highlight-menu := PopupWindow {
+                    x: 0;
+                    y: parent.height + 4px;
+                    width: 5 * 34px + 12px;
+                    Flyout {
+                        HorizontalLayout {
+                            padding: 6px;
+                            for color[i] in Bridge.highlight-colors: Swatch {
+                                swatch: color;
+                                name: Bridge.highlight-names[i];
+                                chosen: Bridge.highlight-color == i;
+                                clicked => {
+                                    Bridge.highlight-color = i;
+                                    Bridge.tool = 1;
+                                    Bridge.tool-changed();
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        if root.shown >= 2: IconButton {
-            // Draw
-            glyph: "\u{ED63}";
-            label: "Draw";
-            toggle: true;
-            checked: Bridge.tool == 2;
-            clicked => {
-                Bridge.tool = Bridge.tool == 2 ? 0 : 2;
-                Bridge.tool-changed();
             }
         }
         if root.shown >= 2: Rectangle {
-            width: 18px;
-            ChevronButton {
-                label: "Drawing color and thickness";
-                clicked => { draw-menu.show(); }
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.toolbar-border;
+            width: group-2.preferred-width;
+            group-2 := HorizontalLayout {
+                spacing: 0px;
+            IconButton {
+                // Draw
+                glyph: "\u{ED63}";
+                label: "Draw";
+                toggle: true;
+                checked: Bridge.tool == 2;
+                clicked => {
+                    Bridge.tool = Bridge.tool == 2 ? 0 : 2;
+                    Bridge.tool-changed();
+                }
             }
-            draw-menu := PopupWindow {
-                x: 0;
-                y: parent.height + 4px;
-                width: 5 * 34px + 12px;
-                Flyout {
-                    VerticalLayout {
-                        padding: 6px;
-                        HorizontalLayout {
-                            for color[i] in Bridge.draw-colors: Swatch {
-                                swatch: color;
-                                name: Bridge.draw-names[i];
-                                chosen: Bridge.draw-color == i;
-                                clicked => {
-                                    Bridge.draw-color = i;
-                                    if (Bridge.tool != 2 && Bridge.tool != 4) {
-                                        Bridge.tool = 2;
-                                        Bridge.tool-changed();
-                                    }
-                                }
-                            }
-                        }
-                        MenuRule { }
-                        HorizontalLayout {
-                            for thickness[i] in Bridge.draw-widths: Rectangle {
-                                height: 34px;
-                                horizontal-stretch: 1;
-                                accessible-role: button;
-                                accessible-label: Bridge.draw-width-names[i];
-                                accessible-checkable: true;
-                                accessible-checked: Bridge.draw-width == i;
-                                accessible-action-default => { Bridge.draw-width = i; }
-                                Rectangle {
-                                    border-radius: 4px;
-                                    background: width-area.has-hover ? Theme.hover : transparent;
-                                    border-width: Bridge.draw-width == i ? 2px : 0px;
-                                    border-color: Theme.accent;
-                                }
-                                Rectangle {
-                                    x: 12px;
-                                    y: (parent.height - self.height) / 2;
-                                    width: parent.width - 24px;
-                                    height: thickness + 1px;
-                                    border-radius: self.height / 2;
-                                    background: Theme.text;
-                                }
-                                width-area := TouchArea {
+            Rectangle {
+                width: 18px;
+                ChevronButton {
+                    label: "Drawing color and thickness";
+                    clicked => { draw-menu.show(); }
+                }
+                draw-menu := PopupWindow {
+                    x: 0;
+                    y: parent.height + 4px;
+                    width: 5 * 34px + 12px;
+                    Flyout {
+                        VerticalLayout {
+                            padding: 6px;
+                            HorizontalLayout {
+                                for color[i] in Bridge.draw-colors: Swatch {
+                                    swatch: color;
+                                    name: Bridge.draw-names[i];
+                                    chosen: Bridge.draw-color == i;
                                     clicked => {
-                                        Bridge.draw-width = i;
+                                        Bridge.draw-color = i;
                                         if (Bridge.tool != 2 && Bridge.tool != 4) {
                                             Bridge.tool = 2;
                                             Bridge.tool-changed();
@@ -433,9 +415,45 @@ export component Toolbar inherits Rectangle {
                                     }
                                 }
                             }
+                            MenuRule { }
+                            HorizontalLayout {
+                                for thickness[i] in Bridge.draw-widths: Rectangle {
+                                    height: 34px;
+                                    horizontal-stretch: 1;
+                                    accessible-role: button;
+                                    accessible-label: Bridge.draw-width-names[i];
+                                    accessible-checkable: true;
+                                    accessible-checked: Bridge.draw-width == i;
+                                    accessible-action-default => { Bridge.draw-width = i; }
+                                    Rectangle {
+                                        border-radius: 4px;
+                                        background: width-area.has-hover ? Theme.hover : transparent;
+                                        border-width: Bridge.draw-width == i ? 2px : 0px;
+                                        border-color: Theme.accent;
+                                    }
+                                    Rectangle {
+                                        x: 12px;
+                                        y: (parent.height - self.height) / 2;
+                                        width: parent.width - 24px;
+                                        height: thickness + 1px;
+                                        border-radius: self.height / 2;
+                                        background: Theme.text;
+                                    }
+                                    width-area := TouchArea {
+                                        clicked => {
+                                            Bridge.draw-width = i;
+                                            if (Bridge.tool != 2 && Bridge.tool != 4) {
+                                                Bridge.tool = 2;
+                                                Bridge.tool-changed();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
             }
         }
         if root.shown >= 3: IconButton {
