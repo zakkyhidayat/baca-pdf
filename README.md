@@ -37,7 +37,7 @@ Ideas, not promises. The first group is what is known to be missing.
 - Form filling, stamps and comments.
 - **Add image**: place a picture on a page, such as a premade handwritten signature saved as a PNG. Pick the file, click where it goes, then move and resize it. Transparent PNGs should keep their transparency.
 - **Sign**: type a name and get it as a cursive signature, with a choice of a few script fonts and ink colors, placed and resized like an image. Drawing a signature and keeping it for later would sit beside it.
-- A floating translation card inside the app, instead of opening the browser.
+- **Better translation.** Translate now opens the browser. Instead, a small floating window inside the app that shows the result, and a choice of the source and target language (today the target is the Windows language and the source is detected). It may need a translation service behind it, which sends the text out, or a local model, which stays on the computer but is large; which one is still open.
 - Registering itself as the default `.pdf` program. Windows must be told once, in Settings, to open PDFs with Baca PDF.
 - Add text today is one line: click where it goes, type, press Enter. It is 12 pt Helvetica in the draw color, cannot be edited or moved after it is placed (only erased), and does not work on a rotated page. Letters outside the Latin set do not show.
 
