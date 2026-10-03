@@ -395,6 +395,18 @@ impl Viewer {
         }
     }
 
+    /// Middle click on Home: the file gets a tab of its own and Home stays in front.
+    pub(crate) fn open_background(&mut self, ui: &AppWindow, path: Option<PathBuf>) {
+        let Some(path) = path else { return };
+        if self.tabs.iter().any(|t| store::same_file(&t.path, &path)) {
+            return;
+        }
+        let spot = self.recents.iter().find(|r| store::same_file(&r.path, &path)).map(|r| r.spot).unwrap_or_default();
+        self.new_tab(path, self.settings.default_zoom, spot, 0);
+        self.sync_ui(ui);
+        self.save_session(ui);
+    }
+
     pub(crate) fn open_favorite(&mut self, ui: &AppWindow, row: usize) {
         if let Some(path) = self.favorites.get(row).cloned() {
             self.open_path(ui, path);

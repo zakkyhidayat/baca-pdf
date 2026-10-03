@@ -22,6 +22,7 @@ component SectionTitle inherits Text {
 component FavoriteCard {
     in property <RecentItem> item;
     callback open;
+    callback background;
     callback unstar;
     callback menu(length, length);
 
@@ -41,6 +42,9 @@ component FavoriteCard {
     area := TouchArea {
         clicked => { root.open(); }
         pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
+                root.background();
+            }
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
                 root.menu(self.mouse-x, self.mouse-y);
             }
@@ -101,6 +105,7 @@ component FavoriteCard {
 component RecentRow {
     in property <RecentItem> item;
     callback open;
+    callback background;
     callback star;
     callback remove;
     callback menu(length, length);
@@ -126,6 +131,9 @@ component RecentRow {
     area := TouchArea {
         clicked => { root.open(); }
         pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
+                root.background();
+            }
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
                 root.menu(self.mouse-x, self.mouse-y);
             }
@@ -430,6 +438,7 @@ export component Home inherits Rectangle {
                     width: parent.card-width;
                     item: fav;
                     open => { Bridge.open-favorite(i); }
+                    background => { Bridge.open-favorite-background(i); }
                     unstar => { Bridge.favorite-remove(i); }
                     menu(mx, my) => {
                         root.menu-source = 1;
@@ -496,6 +505,7 @@ export component Home inherits Rectangle {
                 RecentRow {
                     item: item;
                     open => { Bridge.open-recent(i); }
+                    background => { Bridge.open-recent-background(i); }
                     star => { Bridge.recent-favorite(i); }
                     remove => { Bridge.recent-remove(i); }
                     menu(mx, my) => {

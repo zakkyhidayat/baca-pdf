@@ -349,6 +349,8 @@ fn main() -> Result<(), slint::PlatformError> {
         })
     });
     b.on_open_recent(|row| with_viewer(|viewer, ui| viewer.open_recent(ui, row as usize)));
+    b.on_open_recent_background(|row| with_viewer(|viewer, ui| viewer.open_background(ui, viewer.recent_path(row as usize))));
+    b.on_open_favorite_background(|row| with_viewer(|viewer, ui| viewer.open_background(ui, viewer.favorites.get(row as usize).cloned())));
     b.on_recent_favorite(|row| {
         with_viewer(|viewer, ui| {
             if let Some(path) = viewer.recent_path(row as usize) {
