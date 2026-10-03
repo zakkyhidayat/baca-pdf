@@ -5,7 +5,7 @@ import { Theme, Metrics, Glyph, Tip } from "theme.slint";
 import { IconButton, Flyout } from "controls.slint";
 import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow } from "bridge.slint";
 import { TitleBar } from "titlebar.slint";
-import { Toolbar, FindFlyout } from "toolbar.slint";
+import { Toolbar, FindFlyout, InkOptions } from "toolbar.slint";
 import { Sidebar, PageArea } from "viewer.slint";
 import { Home } from "home.slint";
 import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
@@ -241,6 +241,12 @@ export component AppWindow inherits Window {
         x: max(8px, root.width - self.width - 12px);
         y: toolbar.y + toolbar.height + 4px;
         close-find => { root.close-find(); }
+    }
+
+    ink-options := InkOptions {
+        visible: (Bridge.tool == 1 || Bridge.tool == 2) && Bridge.state == DocState.ready && root.chrome;
+        x: 48px;
+        y: toolbar.y + toolbar.height + 4px;
     }
 
     if Bridge.notice != "": Flyout {
