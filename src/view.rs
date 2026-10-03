@@ -339,6 +339,7 @@ impl Viewer {
         }
         self.sync_outline();
         self.sync_bookmark_state(ui);
+        self.request_annotations();
         let b = ui.global::<Bridge>();
         let query = b.get_find_text().to_string();
         if b.get_find_open() && !query.is_empty() {
@@ -358,6 +359,7 @@ impl Viewer {
         self.model.set_vec(Vec::new());
         self.thumb_model.set_vec(Vec::new());
         self.mark_model.set_vec(Vec::new());
+        self.annot_model.set_vec(Vec::new());
         self.outline_model.set_vec(Vec::new());
         self.renderer.want(Vec::new());
         self.renderer.want_thumbs(Vec::new());

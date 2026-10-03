@@ -28,7 +28,7 @@ use tabs::Tab;
 slint::slint! {
     export {
         AppWindow, Bridge, Theme, Metrics, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem,
-        BookmarkFile, PropRow
+        BookmarkFile, PropRow, AnnotationRow
     } from "ui/app.slint";
 }
 
@@ -84,6 +84,10 @@ struct Viewer {
     presenting: Option<actions::Presenting>,
     stroke: Option<annotate::Stroke>,
     text_target: Option<annotate::TextTarget>,
+    /// The text being typed becomes a sticky note instead of text on the page.
+    note_mode: bool,
+    /// Where the page menu was opened, in document coordinates.
+    menu_point: Option<(f32, f32)>,
     /// What waits for the answer to "save your changes?".
     pending: Option<annotate::Pending>,
     confirm_tab: Option<u64>,
@@ -126,6 +130,7 @@ struct Viewer {
     thumbs: HashMap<usize, (u32, Image)>,
     thumb_model: Rc<VecModel<ThumbView>>,
     mark_model: Rc<VecModel<ThumbView>>,
+    annot_model: Rc<VecModel<AnnotationRow>>,
     outline_model: Rc<VecModel<OutlineRow>>,
 }
 
@@ -209,6 +214,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let thumb_model = Rc::new(VecModel::default());
     let outline_model = Rc::new(VecModel::default());
     let mark_model = Rc::new(VecModel::default());
+    let annot_model = Rc::new(VecModel::default());
+    b.set_annotations(ModelRc::from(annot_model.clone()));
     b.set_thumbs(ModelRc::from(thumb_model.clone()));
     b.set_mark_thumbs(ModelRc::from(mark_model.clone()));
     b.set_outline(ModelRc::from(outline_model.clone()));
@@ -244,6 +251,8 @@ fn main() -> Result<(), slint::PlatformError> {
             presenting: None,
             stroke: None,
             text_target: None,
+            note_mode: false,
+            menu_point: None,
             pending: None,
             confirm_tab: None,
             save_continue: None,
@@ -277,6 +286,7 @@ fn main() -> Result<(), slint::PlatformError> {
             thumbs: HashMap::new(),
             thumb_model,
             mark_model,
+            annot_model,
             outline_model,
         })
     });
@@ -389,6 +399,13 @@ fn main() -> Result<(), slint::PlatformError> {
     // The document
     b.on_viewport_changed(|| with_viewer(|viewer, ui| viewer.refresh(ui)));
     b.on_thumbs_changed(|| with_viewer(|viewer, ui| viewer.refresh_thumbs(ui)));
+    b.on_go_annotation(|page, fy| with_viewer(|viewer, ui| viewer.go_to(ui, page.max(0) as usize, (fy - 0.05).max(0.0))));
+    b.on_delete_annotation(|page, index| {
+        with_viewer(|viewer, _ui| {
+            let Some(doc) = viewer.active_id() else { return };
+            viewer.renderer.edit(render::EditJob::DeleteAnnotation { doc, page: page.max(0) as usize, index: index.max(0) as usize });
+        })
+    });
     b.on_go_page(|page| with_viewer(|viewer, ui| viewer.go_to(ui, page.max(0) as usize, 0.0)));
     b.on_page_step(|step| with_viewer(|viewer, ui| viewer.page_step(ui, step)));
     b.on_go_to_page(|text| {
@@ -558,6 +575,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     b.on_toggle_bookmark(|| with_viewer(|viewer, ui| viewer.toggle_bookmark(ui)));
     b.on_thumb_menu_prepare(|page| with_viewer(|viewer, ui| viewer.thumb_menu_prepare(ui, page.max(0) as usize)));
+    b.on_note_here(|| with_viewer(|viewer, ui| viewer.note_here(ui)));
     b.on_page_menu_prepare(|x, y| with_viewer(|viewer, ui| viewer.page_menu_prepare(ui, x, y)));
     b.on_toggle_bookmark_page(|page| with_viewer(|viewer, ui| viewer.toggle_bookmark_page(ui, page.max(0) as usize + 1)));
     b.on_clear_bookmarks(|| with_viewer(|viewer, ui| viewer.clear_bookmarks(ui)));

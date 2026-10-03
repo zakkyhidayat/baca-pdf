@@ -244,6 +244,7 @@ impl Viewer {
 
     /// Where the right-click landed, for the page menu: which page, and whether it is bookmarked.
     pub(crate) fn page_menu_prepare(&mut self, ui: &AppWindow, x: f32, y: f32) {
+        self.menu_point = Some((x, y));
         let Some(page) = self.page_near(x, y) else { return };
         let marked = self.active_path().map(|p| self.bookmarks_for(&p).contains(&(page + 1))).unwrap_or(false);
         let b = ui.global::<Bridge>();

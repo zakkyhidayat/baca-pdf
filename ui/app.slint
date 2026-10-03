@@ -3,14 +3,14 @@
 import { Palette } from "std-widgets.slint";
 import { Theme, Metrics, Glyph, Tip } from "theme.slint";
 import { IconButton, Flyout } from "controls.slint";
-import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow } from "bridge.slint";
+import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow, AnnotationRow } from "bridge.slint";
 import { TitleBar } from "titlebar.slint";
 import { Toolbar, FindFlyout, InkOptions } from "toolbar.slint";
 import { Sidebar, PageArea } from "viewer.slint";
 import { Home } from "home.slint";
 import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
 
-export { Bridge, Theme, Metrics, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow }
+export { Bridge, Theme, Metrics, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow, AnnotationRow }
 
 export component AppWindow inherits Window {
     title: Bridge.doc-title == "" ? "Baca PDF" : Bridge.doc-title + " - Baca PDF";

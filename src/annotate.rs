@@ -23,6 +23,35 @@ pub(crate) struct Stroke {
     page: usize,
     points: Vec<[f32; 2]>,
     width: f32,
+    /// 0 for a freehand line, otherwise a shape (see `Bridge.draw-shape`) dragged out from `start`.
+    shape: i32,
+    start: [f32; 2],
+}
+
+/// The outline of a shape dragged from `a` to `b`, as the points of one line.
+fn shape_points(shape: i32, a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
+    match shape {
+        1 => vec![a, [b[0], a[1]], b, [a[0], b[1]], a],
+        2 => {
+            let (cx, cy) = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0);
+            let (rx, ry) = ((b[0] - a[0]).abs() / 2.0, (b[1] - a[1]).abs() / 2.0);
+            (0..=48)
+                .map(|i| {
+                    let t = i as f32 / 48.0 * std::f32::consts::TAU;
+                    [cx + rx * t.cos(), cy + ry * t.sin()]
+                })
+                .collect()
+        }
+        4 => {
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let len = dx.hypot(dy).max(1.0);
+            let head = (len * 0.4).min(16.0);
+            let back = dy.atan2(dx) + std::f32::consts::PI;
+            let wing = |turn: f32| [b[0] + head * (back + turn).cos(), b[1] + head * (back + turn).sin()];
+            vec![a, b, wing(0.45), b, wing(-0.45)]
+        }
+        _ => vec![a, b],
+    }
 }
 
 /// Where the text being typed will land.
@@ -81,7 +110,7 @@ impl Stroke {
 }
 
 impl Viewer {
-    fn active_id(&self) -> Option<u64> {
+    pub(crate) fn active_id(&self) -> Option<u64> {
         self.active.map(|a| self.tabs[a].id)
     }
 
@@ -110,7 +139,8 @@ impl Viewer {
         let Some(page) = self.page_near(x, y) else { return };
         let width_px = DRAW_WIDTHS[(ui.global::<Bridge>().get_draw_width().max(0) as usize).min(2)] * self.scale_of_page(ui, page);
         ui.global::<Bridge>().set_stroke_width(width_px.max(1.0));
-        let stroke = Stroke { page, points: vec![[x, y]], width: width_px.max(1.0) };
+        let shape = ui.global::<Bridge>().get_draw_shape();
+        let stroke = Stroke { page, points: vec![[x, y]], width: width_px.max(1.0), shape, start: [x, y] };
         stroke.show(ui);
         self.stroke = Some(stroke);
     }
@@ -122,7 +152,11 @@ impl Viewer {
                 return;
             }
         }
-        stroke.points.push([x, y]);
+        if stroke.shape > 0 {
+            stroke.points = shape_points(stroke.shape, stroke.start, [x, y]);
+        } else {
+            stroke.points.push([x, y]);
+        }
         stroke.show(ui);
     }
 
@@ -169,19 +203,59 @@ impl Viewer {
         ui.global::<Bridge>().set_text_open(false);
         let (Some(target), Some(doc)) = (self.text_target.take(), self.active_id()) else { return };
         let text = text.trim().to_string();
+        let note = std::mem::take(&mut self.note_mode);
         if text.is_empty() {
+            return;
+        }
+        if note {
+            self.renderer.edit(EditJob::Note { doc, page: target.page, turns: self.turns, point: target.point, text });
             return;
         }
         let color = DRAW_COLORS[(ui.global::<Bridge>().get_draw_color().max(0) as usize).min(4)];
         self.renderer.edit(EditJob::Text { doc, page: target.page, turns: self.turns, point: target.point, text, size: TEXT_SIZE, color });
     }
 
+    /// Page menu: type a note at the spot that was right-clicked.
+    pub(crate) fn note_here(&mut self, ui: &AppWindow) {
+        let Some((x, y)) = self.menu_point else { return };
+        let Some((page, point)) = self.fraction_at(x, y) else { return };
+        self.note_mode = true;
+        self.text_target = Some(TextTarget { page, point });
+        let b = ui.global::<Bridge>();
+        b.set_text_x(x);
+        b.set_text_y(y);
+        b.set_text_open(true);
+    }
+
     pub(crate) fn text_cancel(&mut self, ui: &AppWindow) {
+        self.note_mode = false;
         self.text_target = None;
         ui.global::<Bridge>().set_text_open(false);
     }
 
     /// A drawing, highlight, erase or text edit finished (or failed) on the PDFium thread.
+    /// Asks the PDFium thread for the list of annotations the side panel shows.
+    pub(crate) fn request_annotations(&self) {
+        if let Some(doc) = self.active_id() {
+            self.renderer.edit(EditJob::ListAnnotations { doc });
+        }
+    }
+
+    pub(crate) fn show_annotations(&mut self, rows: Vec<crate::render::AnnotRow>) {
+        let rows: Vec<AnnotationRow> = rows
+            .into_iter()
+            .map(|r| AnnotationRow {
+                page: r.page as i32,
+                index: r.index as i32,
+                kind: r.kind.into(),
+                preview: r.preview.into(),
+                color: slint::Color::from_rgb_u8(r.color[0], r.color[1], r.color[2]),
+                fy: r.fy,
+            })
+            .collect();
+        self.annot_model.set_vec(rows);
+    }
+
     pub(crate) fn on_annotated(&mut self, ui: &AppWindow, doc: u64, pages: Vec<usize>, message: Option<String>) {
         if let Some(message) = message {
             store::log_error(&format!("Edit failed: {message}"));
@@ -202,6 +276,7 @@ impl Viewer {
             }
             self.refresh(ui);
             self.refresh_thumbs(ui);
+            self.request_annotations();
         }
         self.sync_ui(ui);
     }

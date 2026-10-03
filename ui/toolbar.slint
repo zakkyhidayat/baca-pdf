@@ -947,7 +947,7 @@ export component FindFlyout inherits Rectangle {
 // Options for the active drawing tool; shown under the toolbar while Highlight or Draw is on.
 export component InkOptions inherits Rectangle {
     width: 5 * 34px + 12px;
-    height: 34px + 9px + 34px + 12px;
+    height: 34px + 9px + 34px + 12px + (Bridge.tool == 2 ? 9px + 34px : 0px);
 
     Flyout {
         x: 0px;
@@ -1045,6 +1045,83 @@ export component InkOptions inherits Rectangle {
                     }
                     width-area := TouchArea {
                         clicked => { Bridge.draw-width = i; }
+                    }
+                }
+            }
+            if Bridge.tool == 2: MenuRule { }
+            if Bridge.tool == 2: HorizontalLayout {
+                for name[i] in ["Pen", "Rectangle", "Ellipse", "Line", "Arrow"]: Rectangle {
+                    height: 34px;
+                    horizontal-stretch: 1;
+                    accessible-role: button;
+                    accessible-label: name;
+                    accessible-checkable: true;
+                    accessible-checked: Bridge.draw-shape == i;
+                    accessible-action-default => { Bridge.draw-shape = i; }
+                    Rectangle {
+                        border-radius: 4px;
+                        background: shape-area.has-hover ? Theme.hover : transparent;
+                        border-width: Bridge.draw-shape == i ? 2px : 0px;
+                        border-color: Theme.accent;
+                    }
+                    if i == 0: Path {
+                        width: 22px;
+                        height: 18px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 22;
+                        viewbox-height: 18;
+                        commands: "M 2 14 C 6 0 12 18 20 4";
+                        stroke: Theme.text;
+                        stroke-width: 1.6px;
+                        fill: transparent;
+                        accessible-role: none;
+                    }
+                    if i == 1: Rectangle {
+                        width: 20px;
+                        height: 14px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        border-width: 1.6px;
+                        border-color: Theme.text;
+                    }
+                    if i == 2: Rectangle {
+                        width: 22px;
+                        height: 14px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 7px;
+                        border-width: 1.6px;
+                        border-color: Theme.text;
+                    }
+                    if i == 3: Path {
+                        width: 22px;
+                        height: 18px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 22;
+                        viewbox-height: 18;
+                        commands: "M 2 16 L 20 2";
+                        stroke: Theme.text;
+                        stroke-width: 1.6px;
+                        fill: transparent;
+                        accessible-role: none;
+                    }
+                    if i == 4: Path {
+                        width: 22px;
+                        height: 18px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 22;
+                        viewbox-height: 18;
+                        commands: "M 2 16 L 20 2 M 20 2 L 11 3 M 20 2 L 19 11";
+                        stroke: Theme.text;
+                        stroke-width: 1.6px;
+                        fill: transparent;
+                        accessible-role: none;
+                    }
+                    shape-area := TouchArea {
+                        clicked => { Bridge.draw-shape = i; }
                     }
                 }
             }

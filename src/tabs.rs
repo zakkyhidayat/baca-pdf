@@ -239,6 +239,8 @@ impl Viewer {
             Event::Properties { doc, rows } if Some(doc) == current => return self.show_properties_rows(ui, rows),
             Event::Link { doc, target } if Some(doc) == current => return self.on_link(ui, target),
             Event::Printed { pages, message } => return self.on_printed(ui, pages, message),
+            Event::AnnotationList { doc, rows } if Some(doc) == current => return self.show_annotations(rows),
+            Event::AnnotationList { .. } => return,
             Event::SearchHits { .. } | Event::SearchDone { .. } | Event::Selected { .. } | Event::Link { .. } | Event::Properties { .. } => return,
             Event::Annotated { doc, pages, message } => return self.on_annotated(ui, doc, pages, message),
             Event::PageText { doc, text } if Some(doc) == current => return self.on_page_text(ui, text),

@@ -15,7 +15,7 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **Find** (Ctrl+F): a bar under the toolbar with the match count, previous, next and close. Every match is highlighted, and accented letters match their plain forms.
 - **Select and copy** text across pages, with Ctrl+C or the Copy bar. Ctrl+A selects the current page.
 - **Links** inside the PDF: web and mail addresses open in your browser, page links jump there. Alt+Left and Alt+Right go back and forward.
-- **Annotation tools**: highlight, underline or strike through selected text (five colors), draw freehand (five colors, three thicknesses) and erase. Changes live in memory and show as a dot on the tab; Save (Ctrl+S) writes them into the file itself and keeps the earlier version once as "name (backup).pdf"; Save a copy (Ctrl+Shift+S) writes a new PDF instead. Closing a tab with changes asks first.
+- **Annotation tools**: highlight, underline or strike through selected text (five colors), draw freehand or as a rectangle, ellipse, line or arrow (five colors, three thicknesses) and erase. Right-click a page and choose Add a note here for a sticky note. The Annotations tab in the side panel lists everything added; click one to jump to it, or remove it from there. Changes live in memory and show as a dot on the tab; Save (Ctrl+S) writes them into the file itself and keeps the earlier version once as "name (backup).pdf"; Save a copy (Ctrl+Shift+S) writes a new PDF instead. Closing a tab with changes asks first.
 - **Read aloud** speaks the selected text or the current page with the Windows voice. **Translate** opens the selected text in a translation page in your browser, in the language Windows is set to.
 - **Zoom to area**: pick it in View options (or hold Ctrl and drag), then drag a rectangle on the page; the view zooms to fill the window with it.
 - **Side panel** with thumbnails and the document outline. Drag its edge to resize it.
@@ -50,7 +50,7 @@ Ideas, not promises. The first group is what is known to be missing.
 
 **Annotation**
 - Undo and redo (Ctrl+Z) for highlights, drawings and text. Open question: where the buttons go in the toolbar.
-- Shapes and sticky notes; move and resize what was added; a list of annotations in the side panel.
+- Move and resize what was added (highlights, drawings, shapes, notes).
 - Pen pressure and palm rejection on tablets.
 
 **Reading**

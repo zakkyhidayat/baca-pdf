@@ -58,6 +58,7 @@ pub enum Event {
     PageText { doc: u64, text: String },
     Saved { doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf> },
     Properties { doc: u64, rows: Vec<(String, String)> },
+    AnnotationList { doc: u64, rows: Vec<AnnotRow> },
     Printed { pages: usize, message: Option<String> },
 }
 
@@ -86,6 +87,17 @@ struct SearchJob {
     next_page: usize,
 }
 
+/// One annotation of the document, as the annotation list shows it.
+pub struct AnnotRow {
+    pub page: usize,
+    pub index: usize,
+    pub kind: &'static str,
+    pub preview: String,
+    pub color: [u8; 3],
+    /// How far down the page the annotation starts, from 0 to 1.
+    pub fy: f32,
+}
+
 /// Where a link inside a page leads.
 pub enum LinkTarget {
     Uri(String),
@@ -102,6 +114,9 @@ pub enum EditJob {
     Save { doc: u64, path: PathBuf, token: u64 },
     /// Writes the changes into the open file itself, keeping the version before the first save beside it.
     SaveOriginal { doc: u64, path: PathBuf, token: u64 },
+    ListAnnotations { doc: u64 },
+    Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
+    DeleteAnnotation { doc: u64, page: usize, index: usize },
 }
 
 impl EditJob {
@@ -113,7 +128,10 @@ impl EditJob {
             | EditJob::Text { doc, .. }
             | EditJob::PageText { doc, .. }
             | EditJob::Save { doc, .. }
-            | EditJob::SaveOriginal { doc, .. } => *doc,
+            | EditJob::SaveOriginal { doc, .. }
+            | EditJob::ListAnnotations { doc }
+            | EditJob::Note { doc, .. }
+            | EditJob::DeleteAnnotation { doc, .. } => *doc,
         }
     }
 }
@@ -435,6 +453,15 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         deliver(Event::Saved { doc, path, token, error, backup: None });
                     }
                     EditJob::SaveOriginal { .. } => {}
+                    EditJob::Note { page, turns, point, text, .. } => {
+                        let (pages, message) = split(edit_note(document, page, turns, point, &text).map(|p| vec![p]));
+                        deliver(Event::Annotated { doc, pages, message });
+                    }
+                    EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document) }),
+                    EditJob::DeleteAnnotation { page, index, .. } => {
+                        let (pages, message) = split(delete_annotation(document, page, index).map(|p| vec![p]));
+                        deliver(Event::Annotated { doc, pages, message });
+                    }
                 }
             }
             Job::Link(job) => {
@@ -774,7 +801,6 @@ fn pdf_color(rgb: [u8; 3]) -> PdfColor {
     PdfColor::new(rgb[0], rgb[1], rgb[2], 255)
 }
 
-/// `style` is 0 for a highlight, 1 for an underline and 2 for a strikethrough.
 /// Writes the document next to the original, keeps the old file as "name (backup).pdf" the first time,
 /// swaps the new file in and opens it again. The open file cannot be replaced while PDFium holds it.
 fn save_original<'a>(
@@ -817,6 +843,73 @@ fn save_original<'a>(
     Ok(kept)
 }
 
+fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
+    let mut rows = Vec::new();
+    for (p, page) in document.pages().iter().enumerate() {
+        let height = page.height().value.max(1.0);
+        let text = page.text().ok();
+        let annotations = page.annotations();
+        for i in 0..annotations.len() {
+            let Ok(annotation) = annotations.get(i) else { continue };
+            let kind = match annotation.annotation_type() {
+                PdfPageAnnotationType::Highlight => "Highlight",
+                PdfPageAnnotationType::Underline => "Underline",
+                PdfPageAnnotationType::Strikeout => "Strikethrough",
+                PdfPageAnnotationType::Ink => "Drawing",
+                PdfPageAnnotationType::FreeText => "Text",
+                PdfPageAnnotationType::Text => "Note",
+                PdfPageAnnotationType::Square | PdfPageAnnotationType::Circle | PdfPageAnnotationType::Line => "Shape",
+                _ => continue,
+            };
+            let Ok(bounds) = annotation.bounds() else { continue };
+            let preview = match kind {
+                "Highlight" | "Underline" | "Strikethrough" => text.as_ref().map(|t| t.inside_rect(bounds)).unwrap_or_default(),
+                "Drawing" => "Freehand line or shape".to_string(),
+                _ => annotation.contents().unwrap_or_default(),
+            };
+            let preview: String = preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
+            // The real color is not read: for an annotation that has an appearance stream (every one after
+            // a save) the library asks PDFium about the wrong object and crashes. A color by kind is shown.
+            let color = match kind {
+                "Highlight" | "Note" => [255, 214, 10],
+                "Drawing" | "Shape" => [226, 24, 46],
+                _ => [32, 32, 32],
+            };
+            let fy = (1.0 - bounds.top().value / height).clamp(0.0, 1.0);
+            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy });
+        }
+    }
+    rows
+}
+
+/// A sticky note: a small yellow icon at the point, with the text as its contents.
+fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], text: &str) -> Result<usize, String> {
+    if turns % 4 != 0 {
+        return Err("Turn the page back upright to add a note.".into());
+    }
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let (config, vw, vh) = virtual_config(&page, turns);
+    let (x, y) = page
+        .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
+        .map_err(|e| describe(&e))?;
+    let (x, y) = (x.value, y.value);
+    let mut annotation = page.annotations_mut().create_text_annotation(text).map_err(|e| describe(&e))?;
+    annotation
+        .set_bounds(PdfRect::new(PdfPoints::new(y - 24.0), PdfPoints::new(x), PdfPoints::new(y), PdfPoints::new(x + 24.0)))
+        .map_err(|e| describe(&e))?;
+    annotation.set_stroke_color(pdf_color([255, 214, 10])).map_err(|e| describe(&e))?;
+    Ok(index)
+}
+
+fn delete_annotation(document: &PdfDocument, index: usize, annotation: usize) -> Result<usize, String> {
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let annotations = page.annotations_mut();
+    let found = annotations.get(annotation).map_err(|e| describe(&e))?;
+    annotations.delete_annotation(found).map_err(|e| describe(&e))?;
+    Ok(index)
+}
+
+/// `style` is 0 for a highlight, 1 for an underline and 2 for a strikethrough.
 fn edit_highlight(document: &PdfDocument, pieces: &[SelectPiece], turns: u8, color: [u8; 3], style: u8) -> Result<Vec<usize>, String> {
     let mut touched = Vec::new();
     for piece in pieces {

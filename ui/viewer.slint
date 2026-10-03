@@ -3,7 +3,7 @@
 import { ScrollView, ListView } from "std-widgets.slint";
 import { Theme, Metrics, Glyph } from "theme.slint";
 import { IconButton, PrimaryButton, Flyout, MenuItem } from "controls.slint";
-import { Bridge, DocState, ThumbView, OutlineRow } from "bridge.slint";
+import { Bridge, DocState, ThumbView, OutlineRow, AnnotationRow } from "bridge.slint";
 
 component ThumbItem {
     in property <ThumbView> item;
@@ -196,6 +196,77 @@ component SidebarTab {
     }
 }
 
+// A row of the annotation list: what it is, where, the text under it, and a button to remove it.
+component AnnotationEntry inherits Rectangle {
+    in property <AnnotationRow> item;
+    height: 56px;
+    accessible-role: button;
+    accessible-label: root.item.kind + ", page " + (root.item.page + 1) + ". " + root.item.preview;
+    accessible-action-default => { Bridge.go-annotation(root.item.page, root.item.fy); }
+
+    Rectangle {
+        x: 4px;
+        y: 2px;
+        width: parent.width - 8px;
+        height: parent.height - 4px;
+        border-radius: 4px;
+        background: open-area.has-hover ? Theme.hover : transparent;
+    }
+    Rectangle {
+        x: 14px;
+        y: 22px;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: root.item.color;
+        border-width: 1px;
+        border-color: Theme.divider;
+    }
+    Text {
+        x: 36px;
+        y: 8px;
+        width: parent.width - 36px - 44px;
+        text: root.item.kind + " \u{00B7} Page " + (root.item.page + 1);
+        font-size: 12px;
+        color: Theme.text-secondary;
+        overflow: elide;
+        accessible-role: none;
+    }
+    Text {
+        x: 36px;
+        y: 28px;
+        width: parent.width - 36px - 44px;
+        text: root.item.preview == "" ? "(no text)" : root.item.preview;
+        font-size: 13px;
+        color: Theme.text;
+        overflow: elide;
+        accessible-role: none;
+    }
+    open-area := TouchArea {
+        width: parent.width - 44px;
+        clicked => { Bridge.go-annotation(root.item.page, root.item.fy); }
+    }
+    Rectangle {
+        x: parent.width - 40px;
+        y: (parent.height - self.height) / 2;
+        width: 32px;
+        height: 32px;
+        border-radius: 4px;
+        accessible-role: button;
+        accessible-label: "Remove this " + root.item.kind;
+        accessible-action-default => { Bridge.delete-annotation(root.item.page, root.item.index); }
+        background: remove-area.pressed ? Theme.pressed : remove-area.has-hover ? Theme.hover : transparent;
+        Glyph {
+            // Delete
+            text: "\u{E74D}";
+            font-size: 14px;
+        }
+        remove-area := TouchArea {
+            clicked => { Bridge.delete-annotation(root.item.page, root.item.index); }
+        }
+    }
+}
+
 export component Sidebar inherits Rectangle {
     background: Theme.sidebar;
     property <length> menu-x;
@@ -206,7 +277,7 @@ export component Sidebar inherits Rectangle {
             padding: 6px;
             spacing: 4px;
             SidebarTab {
-                compact: root.width < 250px;
+                compact: root.width < 330px;
                 // ViewAll
                 glyph: "\u{E8A9}";
                 label: "Pages";
@@ -217,7 +288,7 @@ export component Sidebar inherits Rectangle {
                 }
             }
             SidebarTab {
-                compact: root.width < 250px;
+                compact: root.width < 330px;
                 // BulletedList
                 glyph: "\u{E8FD}";
                 label: "Outline";
@@ -228,13 +299,24 @@ export component Sidebar inherits Rectangle {
                 }
             }
             SidebarTab {
-                compact: root.width < 250px;
+                compact: root.width < 330px;
                 // Tag
                 glyph: "\u{E8EC}";
                 label: "Bookmarked pages";
                 selected: Bridge.sidebar-tab == 2;
                 clicked => {
                     Bridge.sidebar-tab = 2;
+                    Bridge.sidebar-toggled();
+                }
+            }
+            SidebarTab {
+                compact: root.width < 330px;
+                // Edit
+                glyph: "\u{E70F}";
+                label: "Annotations";
+                selected: Bridge.sidebar-tab == 3;
+                clicked => {
+                    Bridge.sidebar-tab = 3;
                     Bridge.sidebar-toggled();
                 }
             }
@@ -286,6 +368,20 @@ export component Sidebar inherits Rectangle {
                 font-size: 13px;
                 wrap: word-wrap;
                 color: Theme.text-secondary;
+            }
+            if Bridge.sidebar-tab == 3 && Bridge.annotations.length == 0: Text {
+                x: 16px;
+                y: 16px;
+                width: parent.width - 32px;
+                text: "No annotations yet. Highlights, underlines, drawings and notes you add appear here.";
+                font-size: 13px;
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+            }
+            if Bridge.sidebar-tab == 3 && Bridge.annotations.length > 0: ListView {
+                for a in Bridge.annotations: AnnotationEntry {
+                    item: a;
+                }
             }
             if Bridge.sidebar-tab == 1 && Bridge.outline.length == 0: Text {
                 x: 16px;
@@ -706,6 +802,11 @@ export component PageArea inherits Rectangle {
                     glyph: "\u{E8EC}";
                     label: Bridge.menu-bookmarked ? "Remove bookmark from this page" : "Bookmark this page";
                     clicked => { Bridge.toggle-bookmark-page(Bridge.menu-page); }
+                }
+                MenuItem {
+                    glyph: "\u{E8F2}";
+                    label: "Add a note here";
+                    clicked => { Bridge.note-here(); }
                 }
             }
         }
