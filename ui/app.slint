@@ -245,7 +245,7 @@ export component AppWindow inherits Window {
 
     ink-options := InkOptions {
         visible: (Bridge.tool == 1 || Bridge.tool == 2) && Bridge.state == DocState.ready && root.chrome;
-        x: 8px;
+        x: toolbar.ink-x;
         y: toolbar.y + toolbar.height + 4px;
     }
 
