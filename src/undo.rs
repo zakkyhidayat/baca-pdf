@@ -66,35 +66,36 @@ impl History {
         }
     }
 
-    /// The color a highlight made in this session was given, if this is one.
+    /// The color a highlight made in this session was given, if this is one. Underlines and
+    /// strikethroughs are always black, and an annotation that came with the file is not known.
     pub fn color_of(&self, page: usize, index: usize) -> Option<[u8; 3]> {
         let id = self.ids.get(&page)?.get(index)?;
         match self.made.get(id)? {
-            EditJob::Highlight { color, .. } => Some(*color),
+            EditJob::Highlight { color, style: 0, .. } => Some(*color),
             _ => None,
         }
     }
 
-    fn set_made_color(&mut self, id: u64, to: [u8; 3]) {
-        if let Some(EditJob::Highlight { color, .. }) = self.made.get_mut(&id) {
+    /// Draws the highlight again in another color. PDFium cannot recolor an annotation that has an
+    /// appearance already (the library's fallback for that case corrupts memory), so the old one is
+    /// removed and a new one made from the same job, keeping the id.
+    fn recolor_id(&mut self, document: &mut PdfDocument, id: u64, to: [u8; 3]) -> Result<Option<usize>, String> {
+        let Some(mut job) = self.made.get(&id).cloned() else { return Ok(None) };
+        if let EditJob::Highlight { color, .. } = &mut job {
             *color = to;
         }
+        let removed = self.remove_id(document, id)?;
+        let made = self.make(document, job, Some(id))?;
+        Ok(made.map(|(page, _)| page).or(removed))
     }
 
-    pub fn set_color(&mut self, document: &PdfDocument, page: usize, index: usize, to: [u8; 3]) -> Result<Vec<usize>, String> {
+    pub fn set_color(&mut self, document: &mut PdfDocument, page: usize, index: usize, to: [u8; 3]) -> Result<Vec<usize>, String> {
         self.sync(document, page);
         let id = *self.ids.get(&page).and_then(|l| l.get(index)).ok_or("That annotation is not there any more.")?;
-        let from = self.color_of(page, index);
-        render::set_color(document, page, index, to)?;
-        match from {
-            Some(from) => {
-                self.set_made_color(id, to);
-                self.push(Entry::Color { id, from, to });
-            }
-            // Its old color is not known, so this cannot be taken back.
-            None => self.redo.clear(),
-        }
-        Ok(vec![page])
+        let from = self.color_of(page, index).ok_or("Only a highlight made in this session can change color.")?;
+        let pages = self.recolor_id(document, id, to)?;
+        self.push(Entry::Color { id, from, to });
+        Ok(pages.into_iter().collect())
     }
 
     fn locate(&self, id: u64) -> Option<(usize, usize)> {
@@ -226,14 +227,7 @@ impl History {
                     }
                 }
                 Entry::Moved { id, from, to, .. } => pages.extend(self.set_rect(document, *id, if undo { *from } else { *to })?),
-                Entry::Color { id, from, to } => {
-                    if let Some((page, index)) = self.locate(*id) {
-                        let color = if undo { *from } else { *to };
-                        render::set_color(document, page, index, color)?;
-                        self.set_made_color(*id, color);
-                        pages.push(page);
-                    }
-                }
+                Entry::Color { id, from, to } => pages.extend(self.recolor_id(document, *id, if undo { *from } else { *to })?),
                 Entry::Text { id, from, to, .. } => {
                     if let Some((page, index)) = self.locate(*id) {
                         render::set_note(document, page, index, if undo { from } else { to })?;

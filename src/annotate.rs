@@ -580,6 +580,7 @@ impl Viewer {
                 color: slint::Color::from_rgb_u8(r.color[0], r.color[1], r.color[2]),
                 fy: r.fy,
                 info: r.info.into(),
+                recolor: r.recolor,
             })
             .collect();
         self.annot_model.set_vec(rows);
@@ -843,6 +844,7 @@ impl Viewer {
         if found.is_empty() {
             return;
         }
+        store::log_error(&format!("Recovery offered for {} file(s) with unsaved changes", found.len()));
         let names: Vec<String> = found.iter().map(|(original, _)| tabs::title_of(original)).collect();
         let text = format!("The program stopped last time before these files were saved:\n\n{}\n\nRecover the changes? They are saved as a new file next to the original; the original is not touched.", names.join("\n"));
         let recover = platform::ask_yes_no("Baca PDF", &text);

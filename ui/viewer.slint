@@ -223,7 +223,8 @@ component AnnotationEntry inherits Rectangle {
         border-color: Theme.divider;
     }
     // A highlight's color can be changed from the dot.
-    if root.item.kind == "Highlight": Rectangle {
+    if root.item.recolor: Rectangle {
+        z: 5;
         x: 6px;
         y: 14px;
         width: 28px;

@@ -124,6 +124,8 @@ pub struct AnnotRow {
     pub rect: [f32; 4],
     /// Who made it and when, as far as the file says.
     pub info: String,
+    /// A highlight whose color can be changed.
+    pub recolor: bool,
 }
 
 /// Where a link inside a page leads.
@@ -1142,7 +1144,7 @@ fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) 
                 bounds.right().value / width,
                 1.0 - bounds.bottom().value / height,
             ];
-            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy, rect, info: made_by(&annotation) });
+            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy, rect, info: made_by(&annotation), recolor: kind == "Highlight" && history.color_of(p, i).is_some() });
         }
     }
     rows
@@ -1286,14 +1288,6 @@ pub(crate) fn set_note(document: &PdfDocument, index: usize, annotation: usize, 
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
     let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
     found.set_contents(text).map_err(|e| describe(&e))?;
-    let _ = found.set_modification_date(chrono::Utc::now());
-    Ok(index)
-}
-
-pub(crate) fn set_color(document: &PdfDocument, index: usize, annotation: usize, color: [u8; 3]) -> Result<usize, String> {
-    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
-    let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
-    found.set_stroke_color(pdf_color(color)).map_err(|e| describe(&e))?;
     let _ = found.set_modification_date(chrono::Utc::now());
     Ok(index)
 }
