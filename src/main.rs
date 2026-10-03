@@ -10,6 +10,7 @@ mod single;
 mod sidebar;
 mod store;
 mod tabs;
+mod forms;
 mod sign;
 mod titlebar;
 mod undo;
@@ -92,6 +93,9 @@ struct Viewer {
     annots: Vec<(usize, usize, &'static str, [f32; 4], String)>,
     /// Who made each annotation and when, by page and position.
     annot_info: HashMap<(usize, usize), String>,
+    /// The form fields of the front document, and the text field being typed in.
+    fields: Vec<render::FieldRow>,
+    field_edit: Option<(usize, usize)>,
     /// The annotation picked on the page, and a drag that moves or resizes it.
     selected: Option<annotate::Selected>,
     annot_drag: Option<annotate::AnnotDrag>,
@@ -269,6 +273,8 @@ fn main() -> Result<(), slint::PlatformError> {
             note_mode: false,
             annots: Vec::new(),
             annot_info: HashMap::new(),
+            fields: Vec::new(),
+            field_edit: None,
             selected: None,
             annot_drag: None,
             note_edit: None,
@@ -640,6 +646,8 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     b.on_toggle_bookmark(|| with_viewer(|viewer, ui| viewer.toggle_bookmark(ui)));
     b.on_thumb_menu_prepare(|page| with_viewer(|viewer, ui| viewer.thumb_menu_prepare(ui, page.max(0) as usize)));
+    b.on_field_commit(|text| with_viewer(|viewer, ui| viewer.field_commit(ui, text.to_string())));
+    b.on_field_cancel(|| with_viewer(|viewer, ui| viewer.field_close(ui)));
     b.on_text_here(|| with_viewer(|viewer, ui| viewer.text_here(ui)));
     b.on_image_here(|| with_viewer(|viewer, ui| viewer.image_here(ui)));
     b.on_sign_here(|| with_viewer(|viewer, ui| viewer.sign_here(ui)));

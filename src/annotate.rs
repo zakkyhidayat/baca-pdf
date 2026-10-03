@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use slint::ComponentHandle;
 
-use crate::render::{EditJob, StampKind};
+use crate::render::{EditJob, FieldValue, StampKind};
 use crate::tabs::Status;
 use crate::*;
 
@@ -320,6 +320,7 @@ impl Viewer {
     /// Asks the PDFium thread for the list of annotations the side panel shows.
     pub(crate) fn request_annotations(&self) {
         if let Some(doc) = self.active_id() {
+            self.renderer.edit(EditJob::ListFields { doc });
             self.renderer.edit(EditJob::ListAnnotations { doc });
         }
     }
@@ -505,6 +506,55 @@ impl Viewer {
         b.set_can_redo(redo.is_some());
         b.set_undo_label(undo.unwrap_or_default().into());
         b.set_redo_label(redo.unwrap_or_default().into());
+    }
+
+    pub(crate) fn show_fields(&mut self, rows: Vec<crate::render::FieldRow>) {
+        self.fields = rows;
+    }
+
+    /// A click on a form field: a checkbox or radio button changes, a text field opens for typing.
+    /// Returns true when the click was on a field.
+    pub(crate) fn click_field(&mut self, ui: &AppWindow, page: usize, f: [f32; 2]) -> bool {
+        if self.field_edit.is_some() {
+            let text = ui.global::<Bridge>().get_field_edit_text().to_string();
+            self.field_commit(ui, text);
+        }
+        let Some(doc) = self.active_id() else { return false };
+        let hit = self.fields.iter().rev().find(|r| r.page == page && f[0] >= r.rect[0] && f[0] <= r.rect[2] && f[1] >= r.rect[1] && f[1] <= r.rect[3]);
+        let Some(row) = hit else { return false };
+        match row.kind {
+            0 => {
+                let Some([x, y, w, h]) = self.content_rect(row.page, row.rect) else { return true };
+                self.field_edit = Some((row.page, row.index));
+                let b = ui.global::<Bridge>();
+                b.set_field_edit_text(row.value.clone().into());
+                b.set_field_edit_x(x);
+                b.set_field_edit_y(y);
+                b.set_field_edit_w(w);
+                b.set_field_edit_h(h);
+                b.set_field_edit_multiline(row.multiline);
+                b.set_field_edit_open(true);
+            }
+            kind => {
+                let value = if kind == 1 { FieldValue::Checked(!row.checked) } else { FieldValue::Checked(true) };
+                self.renderer.edit(EditJob::SetField { doc, page: row.page, index: row.index, value });
+            }
+        }
+        true
+    }
+
+    pub(crate) fn field_commit(&mut self, ui: &AppWindow, text: String) {
+        let (Some((page, index)), Some(doc)) = (self.field_edit, self.active_id()) else { return };
+        let changed = self.fields.iter().find(|r| r.page == page && r.index == index).map(|r| r.value != text).unwrap_or(true);
+        if changed {
+            self.renderer.edit(EditJob::SetField { doc, page, index, value: FieldValue::Text(text) });
+        }
+        self.field_close(ui);
+    }
+
+    pub(crate) fn field_close(&mut self, ui: &AppWindow) {
+        self.field_edit = None;
+        ui.global::<Bridge>().set_field_edit_open(false);
     }
 
     pub(crate) fn show_annotations(&mut self, ui: &AppWindow, rows: Vec<crate::render::AnnotRow>) {

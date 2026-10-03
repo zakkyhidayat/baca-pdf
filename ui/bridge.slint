@@ -320,6 +320,16 @@ export global Bridge {
     // 0 pen, 1 rectangle, 2 ellipse, 3 line, 4 arrow.
     in-out property <int> draw-shape;
     callback note-here();
+    // A text field of the form being filled in, over the page.
+    in-out property <bool> field-edit-open;
+    in-out property <string> field-edit-text;
+    in-out property <length> field-edit-x;
+    in-out property <length> field-edit-y;
+    in-out property <length> field-edit-w;
+    in-out property <length> field-edit-h;
+    in-out property <bool> field-edit-multiline;
+    callback field-commit(string);
+    callback field-cancel();
     callback text-here();
     callback image-here();
     callback sign-here();

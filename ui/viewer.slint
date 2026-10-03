@@ -968,6 +968,42 @@ export component PageArea inherits Rectangle {
                 accessible-role: none;
             }
 
+            // A form text field being filled in, right over the field.
+            if Bridge.field-edit-open: field-box := Rectangle {
+                x: Bridge.field-edit-x;
+                y: Bridge.field-edit-y;
+                width: max(Bridge.field-edit-w, 80px);
+                height: max(Bridge.field-edit-h, 26px);
+                background: Theme.surface;
+                border-width: 2px;
+                border-color: Theme.accent;
+                border-radius: 2px;
+                field-input := TextInput {
+                    x: 4px;
+                    width: parent.width - 8px;
+                    height: parent.height;
+                    text: Bridge.field-edit-text;
+                    single-line: !Bridge.field-edit-multiline;
+                    wrap: Bridge.field-edit-multiline ? word-wrap : no-wrap;
+                    font-size: 14px;
+                    vertical-alignment: Bridge.field-edit-multiline ? top : center;
+                    color: Theme.text;
+                    selection-background-color: Theme.accent;
+                    selection-foreground-color: Theme.on-accent;
+                    accessible-label: "Form field. Press Enter to fill it in, Esc to leave it as it was";
+                    edited => { Bridge.field-edit-text = self.text; }
+                    accepted => { Bridge.field-commit(self.text); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Escape) {
+                            Bridge.field-cancel();
+                            return accept;
+                        }
+                        reject
+                    }
+                    init => { self.focus(); self.select-all(); }
+                }
+            }
+
             // Where text is typed before it is placed on the page.
             if Bridge.text-open: typing := Rectangle {
                 property <bool> want-focus: true;

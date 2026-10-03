@@ -59,6 +59,7 @@ pub enum Event {
     Saved { doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf> },
     Properties { doc: u64, rows: Vec<(String, String)> },
     AnnotationList { doc: u64, rows: Vec<AnnotRow> },
+    Fields { doc: u64, rows: Vec<FieldRow> },
     /// What undo and redo would do now, if anything.
     History { doc: u64, undo: Option<String>, redo: Option<String> },
     Printed { pages: usize, message: Option<String> },
@@ -89,6 +90,25 @@ struct SearchJob {
     opts: FindOpts,
     turns: u8,
     next_page: usize,
+}
+
+/// A form field the reader can fill in: text, a checkbox or a radio button.
+pub struct FieldRow {
+    pub page: usize,
+    pub index: usize,
+    /// 0 text, 1 checkbox, 2 radio button.
+    pub kind: u8,
+    /// Left, top, right and bottom as fractions of the page.
+    pub rect: [f32; 4],
+    pub value: String,
+    pub checked: bool,
+    pub multiline: bool,
+}
+
+#[derive(Clone)]
+pub enum FieldValue {
+    Text(String),
+    Checked(bool),
 }
 
 /// One annotation of the document, as the annotation list shows it.
@@ -133,6 +153,8 @@ pub enum EditJob {
     /// A copy with every annotation and form field drawn into the page itself.
     SaveFlat { doc: u64, path: PathBuf, token: u64 },
     ListAnnotations { doc: u64 },
+    ListFields { doc: u64 },
+    SetField { doc: u64, page: usize, index: usize, value: FieldValue },
     SetNote { doc: u64, page: usize, index: usize, text: String },
     SetBounds { doc: u64, page: usize, index: usize, rect: [f32; 4] },
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
@@ -154,6 +176,8 @@ impl EditJob {
             | EditJob::SaveOriginal { doc, .. }
             | EditJob::SaveFlat { doc, .. }
             | EditJob::ListAnnotations { doc }
+            | EditJob::ListFields { doc }
+            | EditJob::SetField { doc, .. }
             | EditJob::SetNote { doc, .. }
             | EditJob::SetBounds { doc, .. }
             | EditJob::SetColor { doc, .. }
@@ -460,6 +484,24 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     deliver(Event::Saved { doc, path: path.clone(), token: *token, error, backup });
                     continue;
                 }
+                if let EditJob::SetField { page, index, value: FieldValue::Text(text), .. } = &job {
+                    // A text field is filled the way PDFium's form filler does it, on a copy that then replaces the open document.
+                    let password = passwords.get(&doc).and_then(|p| p.as_deref());
+                    let outcome = match (&pdfium, documents.get(&doc)) {
+                        (Ok(p), Some(document)) => crate::forms::fill_text(document, password, *page, *index, text)
+                            .and_then(|bytes| p.load_pdf_from_byte_vec(bytes, password).map_err(|e| describe(&e))),
+                        (Err(message), _) => Err(message.clone()),
+                        _ => Err("The document is not open.".to_string()),
+                    };
+                    match outcome {
+                        Ok(filled) => {
+                            documents.insert(doc, filled);
+                            deliver(Event::Annotated { doc, pages: vec![*page], message: None });
+                        }
+                        Err(message) => deliver(Event::Annotated { doc, pages: Vec::new(), message: Some(message) }),
+                    }
+                    continue;
+                }
                 if let EditJob::SaveFlat { path, token, .. } = &job {
                     let error = match (&pdfium, documents.get(&doc)) {
                         (Ok(p), Some(document)) => save_flat(p, document, passwords.get(&doc).and_then(|p| p.as_deref()), path).err(),
@@ -529,6 +571,11 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         deliver(Event::Annotated { doc, pages, message });
                     }
                     EditJob::Undo { .. } | EditJob::Redo { .. } | EditJob::SetColor { .. } | EditJob::Stamp { .. } => {}
+                    EditJob::ListFields { .. } => deliver(Event::Fields { doc, rows: list_fields(document) }),
+                    EditJob::SetField { page, index, value, .. } => {
+                        let (pages, message) = split(set_field(document, page, index, &value).map(|p| vec![p]));
+                        deliver(Event::Annotated { doc, pages, message });
+                    }
                     EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document, history) }),
                     EditJob::DeleteAnnotation { page, index, .. } => {
                         let (pages, message) = split(delete_annotation(document, page, index).map(|p| vec![p]));
@@ -996,6 +1043,47 @@ fn save_flat(pdfium: &Pdfium, document: &PdfDocument, password: Option<&str>, pa
         page.flatten().map_err(|e| describe(&e))?;
     }
     copy.save_to_file(path).map_err(|e| describe(&e))
+}
+
+fn list_fields(document: &PdfDocument) -> Vec<FieldRow> {
+    let mut rows = Vec::new();
+    for (p, page) in document.pages().iter().enumerate() {
+        let (width, height) = (page.width().value.max(1.0), page.height().value.max(1.0));
+        let annotations = page.annotations();
+        for i in 0..annotations.len() {
+            let Ok(annotation) = annotations.get(i) else { continue };
+            if annotation.annotation_type() != PdfPageAnnotationType::Widget {
+                continue;
+            }
+            let Some(field) = annotation.as_form_field() else { continue };
+            if field.is_read_only() {
+                continue;
+            }
+            let (kind, value, checked, multiline) = match field {
+                PdfFormField::Text(t) => (0, t.value().unwrap_or_default(), false, t.is_multiline()),
+                PdfFormField::Checkbox(c) => (1, String::new(), c.is_checked().unwrap_or(false), false),
+                PdfFormField::RadioButton(r) => (2, String::new(), r.is_checked().unwrap_or(false), false),
+                _ => continue,
+            };
+            let Ok(b) = annotation.bounds() else { continue };
+            let rect = [b.left().value / width, 1.0 - b.top().value / height, b.right().value / width, 1.0 - b.bottom().value / height];
+            rows.push(FieldRow { page: p, index: i, kind, rect, value, checked, multiline });
+        }
+    }
+    rows
+}
+
+fn set_field(document: &PdfDocument, index: usize, annotation: usize, value: &FieldValue) -> Result<usize, String> {
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
+    let field = found.as_form_field_mut().ok_or("That is not a form field any more.")?;
+    match (field, value) {
+        (PdfFormField::Text(t), FieldValue::Text(v)) => t.set_value(v).map_err(|e| describe(&e))?,
+        (PdfFormField::Checkbox(c), FieldValue::Checked(on)) => c.set_checked(*on).map_err(|e| describe(&e))?,
+        (PdfFormField::RadioButton(r), FieldValue::Checked(true)) => r.set_checked().map_err(|e| describe(&e))?,
+        _ => return Err("That field cannot be changed this way.".into()),
+    }
+    Ok(index)
 }
 
 fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) -> Vec<AnnotRow> {

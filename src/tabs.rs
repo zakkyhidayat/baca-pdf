@@ -264,6 +264,8 @@ impl Viewer {
             Event::Printed { pages, message } => return self.on_printed(ui, pages, message),
             Event::AnnotationList { doc, rows } if Some(doc) == current => return self.show_annotations(ui, rows),
             Event::AnnotationList { .. } => return,
+            Event::Fields { doc, rows } if Some(doc) == current => return self.show_fields(rows),
+            Event::Fields { .. } => return,
             Event::History { doc, undo, redo } if Some(doc) == current => return self.show_history(ui, undo, redo),
             Event::History { .. } => return,
             Event::SearchHits { .. } | Event::SearchDone { .. } | Event::Selected { .. } | Event::Link { .. } | Event::Properties { .. } => return,

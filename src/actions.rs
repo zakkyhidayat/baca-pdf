@@ -87,6 +87,9 @@ impl Viewer {
             return;
         }
         let point = [(x - px) / w, (y - py) / h];
+        if self.turns % 4 == 0 && self.click_field(_ui, page, point) {
+            return;
+        }
         self.renderer.link(LinkJob { doc, page, turns: self.turns, point });
     }
 
