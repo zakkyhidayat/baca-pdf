@@ -121,6 +121,8 @@ export component AppWindow inherits Window {
                 if (Bridge.state != DocState.ready) { return reject; }
                 if (event.text == "f" || event.text == "F") { root.open-find(); return accept; }
                 if (event.text == "c" || event.text == "C") { root.copy(); return accept; }
+                if (event.text == "z" || event.text == "Z") { if (event.modifiers.shift) { Bridge.redo(); } else { Bridge.undo(); } return accept; }
+                if (event.text == "y" || event.text == "Y") { Bridge.redo(); return accept; }
                 if (event.modifiers.shift && (event.text == "a" || event.text == "A")) { Bridge.toggle-auto-scroll(); return accept; }
                 if (event.text == "a" || event.text == "A") { Bridge.select-page(); return accept; }
                 if (event.text == "b" || event.text == "B") { Bridge.toggle-bookmark(); return accept; }

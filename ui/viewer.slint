@@ -369,9 +369,31 @@ export component Sidebar inherits Rectangle {
                 wrap: word-wrap;
                 color: Theme.text-secondary;
             }
+            // Undo and redo sit above the list of annotations.
+            if Bridge.sidebar-tab == 3: HorizontalLayout {
+                x: 8px;
+                y: 4px;
+                height: 36px;
+                width: parent.width - 16px;
+                spacing: 4px;
+                IconButton {
+                    // Undo
+                    glyph: "\u{E7A7}";
+                    label: Bridge.can-undo ? "Undo " + Bridge.undo-label + " (Ctrl+Z)" : "Undo (Ctrl+Z)";
+                    enabled: Bridge.can-undo;
+                    clicked => { Bridge.undo(); }
+                }
+                IconButton {
+                    // Redo
+                    glyph: "\u{E7A6}";
+                    label: Bridge.can-redo ? "Redo " + Bridge.redo-label + " (Ctrl+Y)" : "Redo (Ctrl+Y)";
+                    enabled: Bridge.can-redo;
+                    clicked => { Bridge.redo(); }
+                }
+            }
             if Bridge.sidebar-tab == 3 && Bridge.annotations.length == 0: Text {
                 x: 16px;
-                y: 16px;
+                y: 52px;
                 width: parent.width - 32px;
                 text: "No annotations yet. Highlights, underlines, drawings and notes you add appear here.";
                 font-size: 13px;
@@ -379,6 +401,8 @@ export component Sidebar inherits Rectangle {
                 color: Theme.text-secondary;
             }
             if Bridge.sidebar-tab == 3 && Bridge.annotations.length > 0: ListView {
+                y: 44px;
+                height: parent.height - 44px;
                 for a in Bridge.annotations: AnnotationEntry {
                     item: a;
                 }

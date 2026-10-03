@@ -444,6 +444,21 @@ impl Viewer {
         self.note_edit_close(ui);
     }
 
+    pub(crate) fn undo_redo(&mut self, ui: &AppWindow, undo: bool) {
+        let Some(doc) = self.active_id() else { return };
+        self.deselect(ui);
+        self.note_edit_close(ui);
+        self.renderer.edit(if undo { EditJob::Undo { doc } } else { EditJob::Redo { doc } });
+    }
+
+    pub(crate) fn show_history(&mut self, ui: &AppWindow, undo: Option<String>, redo: Option<String>) {
+        let b = ui.global::<Bridge>();
+        b.set_can_undo(undo.is_some());
+        b.set_can_redo(redo.is_some());
+        b.set_undo_label(undo.unwrap_or_default().into());
+        b.set_redo_label(redo.unwrap_or_default().into());
+    }
+
     pub(crate) fn show_annotations(&mut self, ui: &AppWindow, rows: Vec<crate::render::AnnotRow>) {
         self.annots = rows.iter().map(|r| (r.page, r.index, r.kind, r.rect, r.preview.clone())).collect();
         if self.annot_drag.is_none() {

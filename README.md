@@ -19,6 +19,7 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **Read aloud** speaks the selected text or the current page with the Windows voice. **Translate** opens the selected text in a translation page in your browser, in the language Windows is set to.
 - **Pinned tabs**: right-click a tab and choose Pin tab. Pinned tabs sit first as icons only, cannot be closed by accident with the middle button, and come back pinned the next time you start.
 - **Auto-scroll**: turn it on in View options or with Ctrl+Shift+A (it switches the view to vertical scrolling and single pages, and says so). The page moves down by itself; a small bar at the bottom changes the speed (eight steps) or stops it, and Esc stops it too. It stops by itself at the end of the document.
+- **Undo and redo** (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and two buttons above the list in the Annotations tab) for adding, moving, resizing, retyping and removing highlights, underlines, drawings, shapes and notes. An annotation that was already in the file can be moved or retyped, but not brought back once removed. Saving into the file starts the undo history over.
 - **Click to select**: double-click selects a word, triple-click a line. On a touch screen, double-tap zooms in and out.
 - **Zoom to area**: pick it in View options (or hold Ctrl and drag), then drag a rectangle on the page; the view zooms to fill the window with it.
 - **Side panel** with thumbnails and the document outline. Drag its edge to resize it.
@@ -52,7 +53,6 @@ Ideas, not promises. The first group is what is known to be missing.
 - A font that covers other scripts, and the choice to embed it.
 
 **Annotation**
-- Undo and redo (Ctrl+Z) for highlights, drawings and text. Open question: where the buttons go in the toolbar.
 - Move and resize highlights, underlines and strikethroughs (they stay tied to the text for now).
 - Pen pressure and palm rejection on tablets.
 

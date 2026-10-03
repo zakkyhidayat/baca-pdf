@@ -59,6 +59,8 @@ pub enum Event {
     Saved { doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf> },
     Properties { doc: u64, rows: Vec<(String, String)> },
     AnnotationList { doc: u64, rows: Vec<AnnotRow> },
+    /// What undo and redo would do now, if anything.
+    History { doc: u64, undo: Option<String>, redo: Option<String> },
     Printed { pages: usize, message: Option<String> },
 }
 
@@ -107,6 +109,7 @@ pub enum LinkTarget {
 }
 
 /// Changes to the open document, made on the PDFium thread.
+#[derive(Clone)]
 pub enum EditJob {
     Highlight { doc: u64, pieces: Vec<SelectPiece>, turns: u8, color: [u8; 3], style: u8 },
     Ink { doc: u64, page: usize, turns: u8, points: Vec<[f32; 2]>, color: [u8; 3], width: f32 },
@@ -121,6 +124,8 @@ pub enum EditJob {
     SetBounds { doc: u64, page: usize, index: usize, rect: [f32; 4] },
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
     DeleteAnnotation { doc: u64, page: usize, index: usize },
+    Undo { doc: u64 },
+    Redo { doc: u64 },
 }
 
 impl EditJob {
@@ -136,6 +141,8 @@ impl EditJob {
             | EditJob::ListAnnotations { doc }
             | EditJob::SetNote { doc, .. }
             | EditJob::SetBounds { doc, .. }
+            | EditJob::Undo { doc }
+            | EditJob::Redo { doc }
             | EditJob::Note { doc, .. }
             | EditJob::DeleteAnnotation { doc, .. } => *doc,
         }
@@ -353,6 +360,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
     let mut documents: HashMap<u64, PdfDocument> = HashMap::new();
     // Text added with the text tool is page content, so remember where it went to be able to erase it.
     let mut passwords: HashMap<u64, Option<String>> = HashMap::new();
+    let mut histories: HashMap<u64, crate::undo::History> = HashMap::new();
     let mut added_text: HashMap<u64, Vec<(usize, [f32; 4])>> = HashMap::new();
     let (lock, wake) = &*inbox;
 
@@ -370,6 +378,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                 documents.remove(&doc);
                 added_text.remove(&doc);
                 passwords.remove(&doc);
+                histories.remove(&doc);
             }
             Job::Open(doc, path, password) => {
                 let pdfium = match &pdfium {
@@ -425,6 +434,8 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         Err(message) => Err(message.clone()),
                     };
                     added_text.remove(&doc);
+                    histories.entry(doc).or_default().reset();
+                    deliver(Event::History { doc, undo: None, redo: None });
                     let (backup, error) = match outcome {
                         Ok(backup) => (backup, None),
                         Err(message) => (None, Some(message)),
@@ -434,6 +445,28 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                 }
                 let Some(document) = documents.get_mut(&doc) else { continue };
                 let ledger = added_text.entry(doc).or_default();
+                // What can be undone goes through the history.
+                let history = histories.entry(doc).or_default();
+                let tracked = match &job {
+                    EditJob::Highlight { .. } | EditJob::Ink { .. } | EditJob::Note { .. } => Some(history.create(document, job.clone())),
+                    EditJob::DeleteAnnotation { page, index, .. } => Some(history.delete(document, *page, *index)),
+                    EditJob::SetBounds { page, index, rect, .. } => Some(history.set_bounds(document, *page, *index, *rect)),
+                    EditJob::SetNote { page, index, text, .. } => Some(history.set_note(document, *page, *index, text)),
+                    EditJob::Undo { .. } => Some(history.step(document, true)),
+                    EditJob::Redo { .. } => Some(history.step(document, false)),
+                    EditJob::Erase { page, turns, point, .. } => match erase_target(document, *page, *turns, *point) {
+                        Ok(Some(index)) => Some(history.delete(document, *page, index)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(result) = tracked {
+                    let (pages, message) = split(result);
+                    deliver(Event::Annotated { doc, pages, message });
+                    let (undo, redo) = history.labels();
+                    deliver(Event::History { doc, undo, redo });
+                    continue;
+                }
                 match job {
                     EditJob::Highlight { pieces, turns, color, style, .. } => {
                         let (pages, message) = split(edit_highlight(document, &pieces, turns, color, style));
@@ -473,6 +506,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         let (pages, message) = split(set_bounds(document, page, index, rect).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
                     }
+                    EditJob::Undo { .. } | EditJob::Redo { .. } => {}
                     EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document) }),
                     EditJob::DeleteAnnotation { page, index, .. } => {
                         let (pages, message) = split(delete_annotation(document, page, index).map(|p| vec![p]));
@@ -956,7 +990,7 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
 }
 
 /// Moves or resizes an annotation to the rectangle given as fractions of the page (left, top, right, bottom).
-fn set_bounds(document: &PdfDocument, index: usize, annotation: usize, rect: [f32; 4]) -> Result<usize, String> {
+pub(crate) fn set_bounds(document: &PdfDocument, index: usize, annotation: usize, rect: [f32; 4]) -> Result<usize, String> {
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
     let (w, h) = (page.width().value, page.height().value);
     let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
@@ -971,14 +1005,32 @@ fn set_bounds(document: &PdfDocument, index: usize, annotation: usize, rect: [f3
     Ok(index)
 }
 
-fn set_note(document: &PdfDocument, index: usize, annotation: usize, text: &str) -> Result<usize, String> {
+/// Makes the annotation a creation job describes. Returns the pages it touched.
+pub(crate) fn create(document: &PdfDocument, job: &EditJob) -> Result<Vec<usize>, String> {
+    match job {
+        EditJob::Highlight { pieces, turns, color, style, .. } => edit_highlight(document, pieces, *turns, *color, *style),
+        EditJob::Ink { page, turns, points, color, width, .. } => edit_ink(document, *page, *turns, points, *color, *width).map(|p| vec![p]),
+        EditJob::Note { page, turns, point, text, .. } => edit_note(document, *page, *turns, *point, text).map(|p| vec![p]),
+        _ => Err("That cannot be made again.".into()),
+    }
+}
+
+pub(crate) fn contents_of(document: &PdfDocument, page: usize, annotation: usize) -> Option<String> {
+    let page = document.pages().get(page as _).ok()?;
+    let annotations = page.annotations();
+    let found = annotations.get(annotation).ok()?;
+    let text = found.contents();
+    text
+}
+
+pub(crate) fn set_note(document: &PdfDocument, index: usize, annotation: usize, text: &str) -> Result<usize, String> {
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
     let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
     found.set_contents(text).map_err(|e| describe(&e))?;
     Ok(index)
 }
 
-fn delete_annotation(document: &PdfDocument, index: usize, annotation: usize) -> Result<usize, String> {
+pub(crate) fn delete_annotation(document: &PdfDocument, index: usize, annotation: usize) -> Result<usize, String> {
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
     let annotations = page.annotations_mut();
     let found = annotations.get(annotation).map_err(|e| describe(&e))?;
@@ -1089,6 +1141,43 @@ fn near(a: f32, b: f32) -> bool {
 }
 
 /// Removes the annotation under the point, or text added with the text tool. Returns whether anything went.
+/// The annotation under the point, if there is one to remove.
+fn erase_target(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2]) -> Result<Option<usize>, String> {
+    let page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let (config, vw, vh) = virtual_config(&page, turns);
+    let (x, y) = page
+        .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
+        .map_err(|e| describe(&e))?;
+    let (x, y) = (x.value, y.value);
+    let slack = 2.0;
+    let annotations = page.annotations();
+    for i in (0..annotations.len()).rev() {
+        let Ok(annotation) = annotations.get(i) else { continue };
+        let erasable = matches!(
+            annotation.annotation_type(),
+            PdfPageAnnotationType::Highlight
+                | PdfPageAnnotationType::Underline
+                | PdfPageAnnotationType::Squiggly
+                | PdfPageAnnotationType::Strikeout
+                | PdfPageAnnotationType::Ink
+                | PdfPageAnnotationType::FreeText
+                | PdfPageAnnotationType::Text
+                | PdfPageAnnotationType::Square
+                | PdfPageAnnotationType::Circle
+                | PdfPageAnnotationType::Stamp
+        );
+        if !erasable {
+            continue;
+        }
+        if let Ok(b) = annotation.bounds() {
+            if x >= b.left().value - slack && x <= b.right().value + slack && y >= b.bottom().value - slack && y <= b.top().value + slack {
+                return Ok(Some(i));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn edit_erase(
     document: &PdfDocument,
     ledger: &mut Vec<(usize, [f32; 4])>,

@@ -338,6 +338,12 @@ export global Bridge {
     in-out property <length> note-edit-y;
     in-out property <length> note-edit-top;
     callback toggle-auto-scroll();
+    in-out property <bool> can-undo;
+    in-out property <bool> can-redo;
+    in-out property <string> undo-label;
+    in-out property <string> redo-label;
+    callback undo();
+    callback redo();
     callback save();
     callback save-copy();
 

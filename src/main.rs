@@ -11,6 +11,7 @@ mod sidebar;
 mod store;
 mod tabs;
 mod titlebar;
+mod undo;
 mod view;
 
 use std::cell::RefCell;
@@ -584,6 +585,8 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_annot_release(|| with_viewer(|viewer, ui| viewer.annot_release(ui)));
     b.on_annot_delete(|| with_viewer(|viewer, ui| viewer.delete_selected(ui)));
     b.on_annot_deselect(|| with_viewer(|viewer, ui| viewer.deselect(ui)));
+    b.on_undo(|| with_viewer(|viewer, ui| viewer.undo_redo(ui, true)));
+    b.on_redo(|| with_viewer(|viewer, ui| viewer.undo_redo(ui, false)));
     b.on_toggle_auto_scroll(|| with_viewer(|viewer, ui| viewer.toggle_auto_scroll(ui)));
     b.on_note_edit_save(|text| with_viewer(|viewer, ui| viewer.note_edit_save(ui, text.to_string())));
     b.on_note_edit_delete(|| with_viewer(|viewer, ui| viewer.note_edit_delete(ui)));
