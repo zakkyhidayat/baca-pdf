@@ -691,9 +691,6 @@ fn main() -> Result<(), slint::PlatformError> {
     titlebar::on_settings_change(on_settings_change);
     platform::register_file_type();
     with_viewer(|viewer, _| render::set_author(&viewer.settings.author));
-    titlebar::on_navigate(|step| {
-        let _ = slint::invoke_from_event_loop(move || with_viewer(|viewer, ui| viewer.history_step(ui, step)));
-    });
     titlebar::on_open_files(|files| {
         let _ = slint::invoke_from_event_loop(move || {
             with_viewer(|viewer, ui| {
@@ -752,6 +749,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.global::<Bridge>().set_drop_hover(false);
                     with_viewer(|viewer, ui| viewer.open_path(ui, path));
                 });
+            }
+            // The side buttons of a mouse go back and forward through the pages followed from links.
+            winit::event::WindowEvent::MouseInput { state: winit::event::ElementState::Pressed, button, .. }
+                if matches!(button, winit::event::MouseButton::Back | winit::event::MouseButton::Forward) =>
+            {
+                let step = if matches!(button, winit::event::MouseButton::Back) { -1 } else { 1 };
+                with_window(move |_| with_viewer(|viewer, ui| viewer.history_step(ui, step)));
             }
             winit::event::WindowEvent::Resized(_) => with_window(|ui| {
                 let width = ui.window().size().width as f32 / ui.window().scale_factor();

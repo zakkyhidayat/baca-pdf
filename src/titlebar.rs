@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON, IsIconic, SetForegroundWindow, SetPropW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
     ShowWindow, GWL_STYLE, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTMAXBUTTON, HTTOP, NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER,
     SM_CYFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE,
-    WM_APPCOMMAND, WM_COPYDATA, WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
+    WM_COPYDATA, WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
     WS_CAPTION,
 };
 
@@ -117,15 +117,6 @@ fn bring_to_front(h: HWND) {
     }
 }
 
-static mut NAV_CALLBACK: Option<fn(i32)> = None;
-
-/// `on_nav` runs with -1 or 1 for the mouse's back and forward buttons.
-pub fn on_navigate(on_nav: fn(i32)) {
-    unsafe {
-        NAV_CALLBACK = Some(on_nav);
-    }
-}
-
 static mut STATE_CALLBACK: Option<fn(bool, bool, bool)> = None;
 static mut THEME_CALLBACK: Option<fn()> = None;
 
@@ -207,14 +198,6 @@ unsafe extern "system" fn subclass(h: HWND, msg: u32, wparam: WPARAM, lparam: LP
                     if let Some(open) = OPEN_CALLBACK {
                         open(files);
                     }
-                    return LRESULT(1);
-                }
-            }
-            WM_APPCOMMAND => {
-                // The side buttons of a mouse arrive as the browser back and forward commands.
-                let command = ((lparam.0 >> 16) & 0x0FFF) as i32;
-                if let (1 | 2, Some(nav)) = (command, NAV_CALLBACK) {
-                    nav(if command == 1 { -1 } else { 1 });
                     return LRESULT(1);
                 }
             }
