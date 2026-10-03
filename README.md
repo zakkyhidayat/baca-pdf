@@ -32,10 +32,18 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 Ideas, not promises. The first group is what is known to be missing.
 
 **Missing now**
-- Form filling and signatures; stamps and comments.
+- Form filling, stamps and comments.
+- **Add image**: place a picture on a page, such as a premade handwritten signature saved as a PNG. Pick the file, click where it goes, then move and resize it. Transparent PNGs should keep their transparency.
+- **Sign**: type a name and get it as a cursive signature, with a choice of a few script fonts and ink colors, placed and resized like an image. Drawing a signature and keeping it for later would sit beside it.
 - A floating translation card inside the app, instead of opening the browser.
 - Registering itself as the default `.pdf` program. Windows must be told once, in Settings, to open PDFs with Baca PDF.
-- Added text uses a built-in Latin font, so other scripts do not show.
+- Add text today is one line: click where it goes, type, press Enter. It is 12 pt Helvetica in the draw color, cannot be edited or moved after it is placed (only erased), and does not work on a rotated page. Letters outside the Latin set do not show.
+
+**Add text, next steps**
+- Several lines, and a box that wraps.
+- Font size, bold and italic, and a color picker.
+- Edit, move and resize the text after placing it.
+- A font that covers other scripts, and the choice to embed it.
 
 **Annotation**
 - Undo and redo (Ctrl+Z) for highlights, drawings and text.
