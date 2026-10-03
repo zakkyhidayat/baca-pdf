@@ -365,14 +365,6 @@ pub fn describe_time(then: u64, now: u64) -> String {
     }
 }
 
-/// A date and time such as "2 Oct 14:20", in local time.
-pub fn describe_built(t: u64) -> String {
-    let local = t as i64 + local_offset_secs();
-    let (_, m, d) = civil_from_days(local.div_euclid(86_400));
-    let mins = local.rem_euclid(86_400) / 60;
-    format!("{} {} {:02}:{:02}", d, MONTHS[(m - 1) as usize], mins / 60, mins % 60)
-}
-
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 fn describe_date(local: i64) -> String {

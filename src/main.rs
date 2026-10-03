@@ -190,15 +190,7 @@ fn main() -> Result<(), slint::PlatformError> {
     b.set_app_mark(icon(include_bytes!("../ui/img/app-mark.rgba"), 40));
     b.set_file_icon(icon(include_bytes!("../ui/img/tab-icon.rgba"), 64));
     b.set_app_icon(icon(include_bytes!("../ui/img/app-icon.rgba"), 128));
-    // The time this program file was made, so it is easy to tell which build is running.
-    let built = std::env::current_exe()
-        .ok()
-        .and_then(|e| std::fs::metadata(e).ok())
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| format!(" (built {})", store::describe_built(d.as_secs())))
-        .unwrap_or_default();
-    b.set_version(format!("{}{built}", env!("CARGO_PKG_VERSION")).into());
+    b.set_version(env!("CARGO_PKG_VERSION").into());
 
     let renderer = Renderer::start(move |event| {
         let _ = slint::invoke_from_event_loop(move || {
