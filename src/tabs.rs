@@ -243,7 +243,7 @@ impl Viewer {
             Event::Annotated { doc, pages, message } => return self.on_annotated(ui, doc, pages, message),
             Event::PageText { doc, text } if Some(doc) == current => return self.on_page_text(ui, text),
             Event::PageText { .. } => return,
-            Event::Saved { doc, path, token, error } => return self.on_saved(ui, doc, path, token, error),
+            Event::Saved { doc, path, token, error, backup } => return self.on_saved(ui, doc, path, token, error, backup),
         };
         let Some(i) = self.tabs.iter().position(|t| t.id == id) else { return };
         match result {

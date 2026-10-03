@@ -134,7 +134,8 @@ export component ShortcutsDialog inherits Dialog {
         { action: "Fit the width", keys: "Ctrl+0" },
         { action: "Rotate clockwise or counterclockwise", keys: "R, Shift+R" },
         { action: "Print", keys: "Ctrl+P" },
-        { action: "Save a copy", keys: "Ctrl+S" },
+        { action: "Save", keys: "Ctrl+S" },
+        { action: "Save a copy", keys: "Ctrl+Shift+S" },
         { action: "Back and forward after following a link", keys: "Alt+Left, Alt+Right" },
         { action: "Leave a drawing tool", keys: "Esc" },
         { action: "Document properties", keys: "Alt+Enter" },
@@ -202,7 +203,7 @@ export component ConfirmDialog inherits Dialog {
     close => { Bridge.confirm-choice(2); }
 
     Text {
-        text: Bridge.confirm-text + " Closing without saving a copy discards your highlights, drawings and text.";
+        text: Bridge.confirm-text + " Closing without saving discards your highlights, drawings and text.";
         wrap: word-wrap;
         color: Theme.text;
         accessible-role: text;
@@ -218,9 +219,13 @@ export component ConfirmDialog inherits Dialog {
             label: "Don't save";
             clicked => { Bridge.confirm-choice(1); }
         }
-        PrimaryButton {
+        SecondaryButton {
             label: "Save a copy";
             clicked => { Bridge.confirm-choice(0); }
+        }
+        PrimaryButton {
+            label: "Save";
+            clicked => { Bridge.confirm-choice(3); }
         }
     }
 }

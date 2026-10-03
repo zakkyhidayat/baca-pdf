@@ -765,8 +765,37 @@ export component Toolbar inherits Rectangle {
         if !root.compact: IconButton {
             // Save
             glyph: "\u{E78C}";
-            label: "Save a copy (Ctrl+S)";
-            clicked => { Bridge.save-copy(); }
+            label: "Save (Ctrl+S)";
+            clicked => { Bridge.save(); }
+        }
+        if !root.compact: Rectangle {
+            width: 18px;
+            ChevronButton {
+                label: "Save options";
+                clicked => { save-menu.show(); }
+            }
+            save-menu := PopupWindow {
+                x: parent.width - self.width;
+                y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
+                width: 280px;
+                Flyout {
+                    VerticalLayout {
+                        padding: 6px;
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save";
+                            hint: "Ctrl+S";
+                            clicked => { Bridge.save(); }
+                        }
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save a copy";
+                            hint: "Ctrl+Shift+S";
+                            clicked => { Bridge.save-copy(); }
+                        }
+                    }
+                }
+            }
         }
         if root.compact: Rectangle {
             width: root.b;
@@ -791,8 +820,14 @@ export component Toolbar inherits Rectangle {
                         }
                         MenuItem {
                             glyph: "\u{E78C}";
-                            label: "Save a copy";
+                            label: "Save";
                             hint: "Ctrl+S";
+                            clicked => { Bridge.save(); }
+                        }
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save a copy";
+                            hint: "Ctrl+Shift+S";
                             clicked => { Bridge.save-copy(); }
                         }
                     }
@@ -895,7 +930,7 @@ export component FindFlyout inherits Rectangle {
 // Options for the active drawing tool; shown under the toolbar while Highlight or Draw is on.
 export component InkOptions inherits Rectangle {
     width: 5 * 34px + 12px;
-    height: (Bridge.tool == 2 ? 34px + 9px + 34px : 34px) + 12px;
+    height: 34px + 9px + 34px + 12px;
 
     Flyout {
         x: 0px;
@@ -910,6 +945,52 @@ export component InkOptions inherits Rectangle {
                     name: Bridge.highlight-names[i];
                     chosen: Bridge.highlight-color == i;
                     clicked => { Bridge.highlight-color = i; }
+                }
+            }
+            if Bridge.tool == 1: MenuRule { }
+            if Bridge.tool == 1: HorizontalLayout {
+                for name[i] in ["Highlight", "Underline", "Strikethrough"]: Rectangle {
+                    height: 34px;
+                    horizontal-stretch: 1;
+                    accessible-role: button;
+                    accessible-label: name;
+                    accessible-checkable: true;
+                    accessible-checked: Bridge.mark-style == i;
+                    accessible-action-default => { Bridge.mark-style = i; }
+                    Rectangle {
+                        border-radius: 4px;
+                        background: style-area.has-hover ? Theme.hover : transparent;
+                        border-width: Bridge.mark-style == i ? 2px : 0px;
+                        border-color: Theme.accent;
+                    }
+                    Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 30px;
+                        height: 18px;
+                        if i == 0: Rectangle {
+                            background: Bridge.highlight-colors[Bridge.highlight-color];
+                            opacity: 0.8;
+                        }
+                        Text {
+                            text: "ab";
+                            color: Theme.text;
+                            font-size: 14px;
+                        }
+                        if i == 1: Rectangle {
+                            y: parent.height - 2px;
+                            height: 1.5px;
+                            background: Theme.text;
+                        }
+                        if i == 2: Rectangle {
+                            y: parent.height / 2;
+                            height: 1.5px;
+                            background: Theme.text;
+                        }
+                    }
+                    style-area := TouchArea {
+                        clicked => { Bridge.mark-style = i; }
+                    }
                 }
             }
             if Bridge.tool == 2: HorizontalLayout {

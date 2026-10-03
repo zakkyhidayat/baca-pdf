@@ -142,6 +142,8 @@ export global Bridge {
     // The pointer tool: 0 selects text, 1 highlights, 2 draws, 3 erases, 4 adds text.
     in-out property <int> tool;
     in-out property <int> highlight-color;
+    // 0 highlight, 1 underline, 2 strikethrough.
+    in-out property <int> mark-style;
     in-out property <int> draw-color;
     in-out property <int> draw-width: 1;
     out property <[color]> highlight-colors: [#ffe94d, #7ee787, #66d9ef, #ff8fd0, #ffb454];
@@ -282,6 +284,7 @@ export global Bridge {
     callback show-properties();
     callback toggle-presentation();
     callback print();
+    callback save();
     callback save-copy();
 
     callback toggle-fullscreen();

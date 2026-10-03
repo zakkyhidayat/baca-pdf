@@ -88,6 +88,8 @@ struct Viewer {
     pending: Option<annotate::Pending>,
     confirm_tab: Option<u64>,
     save_continue: Option<u64>,
+    /// Tokens of saves that write into the file itself, not into a copy.
+    in_place: std::collections::HashSet<u64>,
     token: u64,
     speaker: Option<platform::Speaker>,
     /// Tabs closed lately, newest last, as file and 1-based page, for Ctrl+Shift+T.
@@ -245,6 +247,7 @@ fn main() -> Result<(), slint::PlatformError> {
             pending: None,
             confirm_tab: None,
             save_continue: None,
+            in_place: Default::default(),
             token: 0,
             speaker: None,
             closed: Vec::new(),
@@ -558,6 +561,7 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_show_properties(|| with_viewer(|viewer, _| viewer.show_properties()));
     b.on_toggle_presentation(|| with_viewer(|viewer, ui| viewer.toggle_presentation(ui)));
     b.on_print(|| with_viewer(|viewer, ui| viewer.print(ui)));
+    b.on_save(|| with_viewer(|viewer, ui| viewer.save_original(ui)));
     b.on_save_copy(|| with_viewer(|viewer, ui| viewer.save_copy(ui)));
 
     // The window

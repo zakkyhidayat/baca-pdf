@@ -100,7 +100,7 @@ impl Viewer {
         let Some(doc) = self.active_id() else { return };
         let Some(sel) = self.selection.as_ref().filter(|s| !s.pieces.is_empty()) else { return };
         let color = HIGHLIGHT_COLORS[(ui.global::<Bridge>().get_highlight_color().max(0) as usize).min(4)];
-        self.renderer.edit(EditJob::Highlight { doc, pieces: sel.pieces.clone(), turns: self.turns, color });
+        self.renderer.edit(EditJob::Highlight { doc, pieces: sel.pieces.clone(), turns: self.turns, color, style: ui.global::<Bridge>().get_mark_style().clamp(0, 2) as u8 });
         self.clear_selection(ui);
     }
 
@@ -387,6 +387,14 @@ impl Viewer {
                 self.renderer.edit(EditJob::Save { doc: id, path: target, token });
                 b.set_confirm_open(false);
             }
+            3 => {
+                let Some(path) = self.tabs.iter().find(|t| t.id == id).map(|t| t.path.clone()) else { return };
+                let token = self.next_token();
+                self.save_continue = Some(token);
+                self.in_place.insert(token);
+                self.renderer.edit(EditJob::SaveOriginal { doc: id, path, token });
+                b.set_confirm_open(false);
+            }
             1 => {
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
                     tab.dirty = false;
@@ -408,14 +416,15 @@ impl Viewer {
     }
 
     /// A copy was written by the PDFium thread.
-    pub(crate) fn on_saved(&mut self, ui: &AppWindow, doc: u64, path: PathBuf, token: u64, error: Option<String>) {
+    pub(crate) fn on_saved(&mut self, ui: &AppWindow, doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf>) {
+        let in_place = self.in_place.remove(&token);
         let continuing = self.save_continue == Some(token);
         if continuing {
             self.save_continue = None;
         }
         if let Some(message) = error {
-            store::log_error(&format!("Save a copy failed: {message}"));
-            self.notify(ui, &format!("The copy could not be saved: {message}"));
+            store::log_error(&format!("Save failed: {message}"));
+            self.notify(ui, &if in_place { message } else { format!("The copy could not be saved: {message}") });
             if continuing {
                 self.pending = None;
                 self.confirm_tab = None;
@@ -425,7 +434,12 @@ impl Viewer {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == doc && !matches!(t.status, Status::Failed(_))) {
             tab.dirty = false;
         }
-        self.notify(ui, &format!("Saved a copy as {}", tabs::title_of(&path)));
+        if in_place {
+            let kept = backup.map(|b| format!(" The earlier version is kept as {}.", tabs::title_of(&b))).unwrap_or_default();
+            self.notify(ui, &format!("Saved {}.{kept}", tabs::title_of(&path)));
+        } else {
+            self.notify(ui, &format!("Saved a copy as {}", tabs::title_of(&path)));
+        }
         self.sync_ui(ui);
         if continuing {
             self.continue_pending(ui);

@@ -56,7 +56,7 @@ pub enum Event {
     /// An edit changed these pages (or failed with a message).
     Annotated { doc: u64, pages: Vec<usize>, message: Option<String> },
     PageText { doc: u64, text: String },
-    Saved { doc: u64, path: PathBuf, token: u64, error: Option<String> },
+    Saved { doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf> },
     Properties { doc: u64, rows: Vec<(String, String)> },
     Printed { pages: usize, message: Option<String> },
 }
@@ -94,12 +94,14 @@ pub enum LinkTarget {
 
 /// Changes to the open document, made on the PDFium thread.
 pub enum EditJob {
-    Highlight { doc: u64, pieces: Vec<SelectPiece>, turns: u8, color: [u8; 3] },
+    Highlight { doc: u64, pieces: Vec<SelectPiece>, turns: u8, color: [u8; 3], style: u8 },
     Ink { doc: u64, page: usize, turns: u8, points: Vec<[f32; 2]>, color: [u8; 3], width: f32 },
     Erase { doc: u64, page: usize, turns: u8, point: [f32; 2] },
     Text { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String, size: f32, color: [u8; 3] },
     PageText { doc: u64, page: usize },
     Save { doc: u64, path: PathBuf, token: u64 },
+    /// Writes the changes into the open file itself, keeping the version before the first save beside it.
+    SaveOriginal { doc: u64, path: PathBuf, token: u64 },
 }
 
 impl EditJob {
@@ -110,7 +112,8 @@ impl EditJob {
             | EditJob::Erase { doc, .. }
             | EditJob::Text { doc, .. }
             | EditJob::PageText { doc, .. }
-            | EditJob::Save { doc, .. } => *doc,
+            | EditJob::Save { doc, .. }
+            | EditJob::SaveOriginal { doc, .. } => *doc,
         }
     }
 }
@@ -323,6 +326,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
     let pdfium = bind();
     let mut documents: HashMap<u64, PdfDocument> = HashMap::new();
     // Text added with the text tool is page content, so remember where it went to be able to erase it.
+    let mut passwords: HashMap<u64, Option<String>> = HashMap::new();
     let mut added_text: HashMap<u64, Vec<(usize, [f32; 4])>> = HashMap::new();
     let (lock, wake) = &*inbox;
 
@@ -339,6 +343,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
             Job::Close(doc) => {
                 documents.remove(&doc);
                 added_text.remove(&doc);
+                passwords.remove(&doc);
             }
             Job::Open(doc, path, password) => {
                 let pdfium = match &pdfium {
@@ -357,6 +362,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                             .collect();
                         let outline = outline(&document);
                         documents.insert(doc, document);
+                        passwords.insert(doc, password.clone());
                         deliver(Event::Opened { doc, sizes, outline });
                     }
                     Err(PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError)) => {
@@ -387,11 +393,24 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
             }
             Job::Edit(job) => {
                 let doc = job.doc();
+                if let EditJob::SaveOriginal { path, token, .. } = &job {
+                    let outcome = match &pdfium {
+                        Ok(p) => save_original(p, &mut documents, &passwords, doc, path),
+                        Err(message) => Err(message.clone()),
+                    };
+                    added_text.remove(&doc);
+                    let (backup, error) = match outcome {
+                        Ok(backup) => (backup, None),
+                        Err(message) => (None, Some(message)),
+                    };
+                    deliver(Event::Saved { doc, path: path.clone(), token: *token, error, backup });
+                    continue;
+                }
                 let Some(document) = documents.get_mut(&doc) else { continue };
                 let ledger = added_text.entry(doc).or_default();
                 match job {
-                    EditJob::Highlight { pieces, turns, color, .. } => {
-                        let (pages, message) = split(edit_highlight(document, &pieces, turns, color));
+                    EditJob::Highlight { pieces, turns, color, style, .. } => {
+                        let (pages, message) = split(edit_highlight(document, &pieces, turns, color, style));
                         deliver(Event::Annotated { doc, pages, message });
                     }
                     EditJob::Ink { page, turns, points, color, width, .. } => {
@@ -413,8 +432,9 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     }
                     EditJob::Save { path, token, .. } => {
                         let error = document.save_to_file(&path).err().map(|e| describe(&e));
-                        deliver(Event::Saved { doc, path, token, error });
+                        deliver(Event::Saved { doc, path, token, error, backup: None });
                     }
+                    EditJob::SaveOriginal { .. } => {}
                 }
             }
             Job::Link(job) => {
@@ -754,7 +774,50 @@ fn pdf_color(rgb: [u8; 3]) -> PdfColor {
     PdfColor::new(rgb[0], rgb[1], rgb[2], 255)
 }
 
-fn edit_highlight(document: &PdfDocument, pieces: &[SelectPiece], turns: u8, color: [u8; 3]) -> Result<Vec<usize>, String> {
+/// `style` is 0 for a highlight, 1 for an underline and 2 for a strikethrough.
+/// Writes the document next to the original, keeps the old file as "name (backup).pdf" the first time,
+/// swaps the new file in and opens it again. The open file cannot be replaced while PDFium holds it.
+fn save_original<'a>(
+    pdfium: &'a Pdfium,
+    documents: &mut HashMap<u64, PdfDocument<'a>>,
+    passwords: &HashMap<u64, Option<String>>,
+    doc: u64,
+    path: &std::path::Path,
+) -> Result<Option<PathBuf>, String> {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
+    let dir = path.parent().map(|d| d.to_path_buf()).unwrap_or_default();
+    let temp = dir.join(format!("{stem}.baca-saving"));
+    let backup = dir.join(format!("{stem} (backup).pdf"));
+    let password = passwords.get(&doc).cloned().flatten();
+
+    documents.get(&doc).ok_or("The document is not open.")?.save_to_file(&temp).map_err(|e| describe(&e))?;
+    let kept = if backup.exists() {
+        None
+    } else {
+        match std::fs::copy(path, &backup) {
+            Ok(_) => Some(backup),
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp);
+                return Err(format!("The backup could not be made, so nothing was changed: {e}"));
+            }
+        }
+    };
+    documents.remove(&doc);
+    let reload = |from: &std::path::Path, documents: &mut HashMap<u64, PdfDocument<'a>>| {
+        pdfium.load_pdf_from_file(from, password.as_deref()).ok().map(|d| documents.insert(doc, d)).is_some()
+    };
+    if let Err(e) = std::fs::rename(&temp, path) {
+        // The new file could not be put in place: carry on from it so the changes are not lost.
+        reload(&temp, documents);
+        return Err(format!("The file could not be replaced ({e}). Your changes are still open; try Save a copy."));
+    }
+    if !reload(path, documents) {
+        return Err("The file was saved, but it could not be opened again. Close the tab and open it once more.".into());
+    }
+    Ok(kept)
+}
+
+fn edit_highlight(document: &PdfDocument, pieces: &[SelectPiece], turns: u8, color: [u8; 3], style: u8) -> Result<Vec<usize>, String> {
     let mut touched = Vec::new();
     for piece in pieces {
         let mut page = document.pages().get(piece.page as _).map_err(|e| describe(&e))?;
@@ -773,27 +836,37 @@ fn edit_highlight(document: &PdfDocument, pieces: &[SelectPiece], turns: u8, col
             r = r.max(rect.right().value);
             t = t.max(rect.top().value);
         }
-        let mut annotation = page.annotations_mut().create_highlight_annotation().map_err(|e| describe(&e))?;
-        annotation
-            .set_bounds(PdfRect::new(PdfPoints::new(b), PdfPoints::new(l), PdfPoints::new(t), PdfPoints::new(r)))
-            .map_err(|e| describe(&e))?;
-        for rect in &rects {
-            annotation
-                .attachment_points_mut()
-                .create_attachment_point_at_end(PdfQuadPoints::new_from_values(
-                    // PDFium reads the corners as top left, top right, bottom left, bottom right.
-                    rect.left().value,
-                    rect.top().value,
-                    rect.right().value,
-                    rect.top().value,
-                    rect.left().value,
-                    rect.bottom().value,
-                    rect.right().value,
-                    rect.bottom().value,
-                ))
-                .map_err(|e| describe(&e))?;
+        // The three markup kinds are different types with the same calls, hence the macro.
+        macro_rules! mark {
+            ($annotation:expr) => {{
+                let mut annotation = $annotation.map_err(|e| describe(&e))?;
+                annotation
+                    .set_bounds(PdfRect::new(PdfPoints::new(b), PdfPoints::new(l), PdfPoints::new(t), PdfPoints::new(r)))
+                    .map_err(|e| describe(&e))?;
+                for rect in &rects {
+                    annotation
+                        .attachment_points_mut()
+                        .create_attachment_point_at_end(PdfQuadPoints::new_from_values(
+                            // PDFium reads the corners as top left, top right, bottom left, bottom right.
+                            rect.left().value,
+                            rect.top().value,
+                            rect.right().value,
+                            rect.top().value,
+                            rect.left().value,
+                            rect.bottom().value,
+                            rect.right().value,
+                            rect.bottom().value,
+                        ))
+                        .map_err(|e| describe(&e))?;
+                }
+                annotation.set_stroke_color(pdf_color(color)).map_err(|e| describe(&e))?;
+            }};
         }
-        annotation.set_stroke_color(pdf_color(color)).map_err(|e| describe(&e))?;
+        match style {
+            1 => mark!(page.annotations_mut().create_underline_annotation()),
+            2 => mark!(page.annotations_mut().create_strikeout_annotation()),
+            _ => mark!(page.annotations_mut().create_highlight_annotation()),
+        }
         touched.push(piece.page);
     }
     Ok(touched)

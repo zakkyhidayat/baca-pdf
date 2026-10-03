@@ -118,7 +118,7 @@ export component AppWindow inherits Window {
                 if (event.text == "a" || event.text == "A") { Bridge.select-page(); return accept; }
                 if (event.text == "b" || event.text == "B") { Bridge.toggle-bookmark(); return accept; }
                 if (event.text == "p" || event.text == "P") { Bridge.print(); return accept; }
-                if (event.text == "s" || event.text == "S") { Bridge.save-copy(); return accept; }
+                if (event.text == "s" || event.text == "S") { if (event.modifiers.shift) { Bridge.save-copy(); } else { Bridge.save(); } return accept; }
                 if (event.text == "=" || event.text == "+") { Bridge.zoom-step(1); return accept; }
                 if (event.text == "-") { Bridge.zoom-step(-1); return accept; }
                 if (event.text == "0") { Bridge.set-zoom(3, 0); return accept; }

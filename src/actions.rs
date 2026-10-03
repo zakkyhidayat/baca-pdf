@@ -189,6 +189,18 @@ impl Viewer {
         }
     }
 
+    /// Writes the changes into the file itself; the first time, the earlier version is kept beside it.
+    pub(crate) fn save_original(&mut self, ui: &AppWindow) {
+        let Some(path) = self.active_path() else { return };
+        let Some(doc) = self.active.map(|a| &self.tabs[a]).filter(|t| t.dirty).map(|t| t.id) else {
+            self.notify(ui, "There is nothing to save.");
+            return;
+        };
+        let token = self.next_token();
+        self.in_place.insert(token);
+        self.renderer.edit(render::EditJob::SaveOriginal { doc, path, token });
+    }
+
     /// Copies the file elsewhere; the original is never changed.
     pub(crate) fn save_copy(&mut self, ui: &AppWindow) {
         let Some(path) = self.active_path() else { return };
