@@ -57,8 +57,8 @@ pub fn hand_over(files: &[PathBuf]) -> bool {
         let taken = GetLastError() == ERROR_ALREADY_EXISTS;
         match mutex {
             Ok(handle) if !taken => {
-                // Held until this process ends.
-                std::mem::forget(handle);
+                // The handle is never closed, so the mutex is held until this process ends.
+                let _ = handle;
                 return false;
             }
             Ok(_) => {}

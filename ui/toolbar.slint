@@ -4,45 +4,6 @@ import { Theme, Metrics, Glyph } from "theme.slint";
 import { IconButton, MenuItem, MenuHeading, MenuRule, Flyout, ToolbarSeparator } from "controls.slint";
 import { Bridge } from "bridge.slint";
 
-// A small arrow beside a tool, for the choices that go with it.
-component ChevronButton {
-    in property <string> label;
-    callback clicked;
-
-    width: 18px;
-    height: Metrics.touch ? 40px : 32px;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    forward-focus: focus;
-
-    Rectangle {
-        border-radius: 4px;
-        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
-        border-width: focus.has-focus ? 2px : 0px;
-        border-color: Theme.focus;
-    }
-    Glyph {
-        // ChevronDown
-        text: "\u{E70D}";
-        font-size: 9px;
-        color: Theme.text-secondary;
-    }
-    area := TouchArea {
-        clicked => { root.clicked(); }
-    }
-    focus := FocusScope {
-        focus-on-click: false;
-        key-pressed(event) => {
-            if (event.text == " " || event.text == Key.Return || event.text == Key.DownArrow) {
-                root.clicked();
-                return accept;
-            }
-            reject
-        }
-    }
-}
-
 // One button for a tool and its choices: the icon and a small arrow share a single hover area.
 component MenuButton {
     in property <string> glyph;

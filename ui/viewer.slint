@@ -273,7 +273,7 @@ export component Sidebar inherits Rectangle {
                     context(x, y) => {
                         Bridge.thumb-menu-prepare(t.page);
                         root.menu-x = min(x, root.width - 280px);
-                        root.menu-y = 44px + t.y - 8px + mark-list.viewport-y + y;
+                        root.menu-y = 44px + t.y - 8px + mark-list.content-y + y;
                         thumb-menu.show();
                     }
                 }

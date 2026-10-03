@@ -963,7 +963,7 @@ fn edit_erase(
         }
     }
     if let Some(i) = hit {
-        let mut annotations = page.annotations_mut();
+        let annotations = page.annotations_mut();
         let annotation = annotations.get(i).map_err(|e| describe(&e))?;
         annotations.delete_annotation(annotation).map_err(|e| describe(&e))?;
         return Ok(true);

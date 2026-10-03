@@ -54,7 +54,7 @@ Ideas, not promises. The first group is what is known to be missing.
 
 **Reading**
 - Drag tabs to reorder them, pin tabs, reopen a closed tab (Ctrl+Shift+T), and split view for two documents side by side.
-- Search across every open tab, and across recent files.
+- Search across every open tab, and across recent files. The results should be saveable to a local file, so a user can keep them as a backup.
 - Names and notes for page bookmarks.
 - Zoom to a dragged rectangle, kinetic scrolling on touch, and auto-scroll.
 - A laser pointer and a blank screen in presentation mode.
