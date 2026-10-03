@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use slint::ComponentHandle;
 
-use crate::render::EditJob;
+use crate::render::{EditJob, StampKind};
 use crate::tabs::Status;
 use crate::*;
 
@@ -16,7 +16,7 @@ pub(crate) const HIGHLIGHT_COLORS: [[u8; 3]; 5] =
 pub(crate) const DRAW_COLORS: [[u8; 3]; 5] = [[232, 17, 35], [27, 27, 27], [0, 99, 177], [16, 137, 62], [255, 140, 0]];
 /// Line widths in PDF points: thin, medium, thick.
 pub(crate) const DRAW_WIDTHS: [f32; 3] = [1.5, 3.0, 6.0];
-const TEXT_SIZE: f32 = 12.0;
+const TEXT_SIZES: [f32; 7] = [10.0, 12.0, 14.0, 18.0, 24.0, 32.0, 48.0];
 
 /// A line being drawn, in content coordinates.
 pub(crate) struct Stroke {
@@ -81,7 +81,7 @@ fn annot_hit(kind: &str, r: &[f32; 4], f: [f32; 2], page: [f32; 2], inside_ok: b
         return false;
     }
     let small = (r[2] - r[0]) * page[0] < 48.0 || (r[3] - r[1]) * page[1] < 48.0;
-    if kind == "Note" || small || inside_ok {
+    if matches!(kind, "Note" | "Image" | "Text") || small || inside_ok {
         return true;
     }
     let inner = f[0] > r[0] + sx && f[0] < r[2] - sx && f[1] > r[1] + sy && f[1] < r[3] - sy;
@@ -226,10 +226,54 @@ impl Viewer {
         self.renderer.edit(EditJob::Erase { doc, page, turns: self.turns, point });
     }
 
+    /// Page menu: type text at the spot that was right-clicked.
+    pub(crate) fn text_here(&mut self, ui: &AppWindow) {
+        let Some((x, y)) = self.menu_point else { return };
+        self.text_at(ui, x, y);
+    }
+
+    /// Page menu: choose a picture and put it at the spot that was right-clicked.
+    pub(crate) fn image_here(&mut self, ui: &AppWindow) {
+        let Some((x, y)) = self.menu_point else { return };
+        let Some((page, point)) = self.fraction_at(x, y) else { return };
+        let Some(doc) = self.active_id() else { return };
+        let Some(path) = platform::pick_image() else { return };
+        self.renderer.edit(EditJob::Stamp { doc, page, turns: self.turns, point, kind: StampKind::Image(path) });
+        self.notify(ui, "Picture added. Drag it to move it, pull a corner to resize it.");
+    }
+
+    /// Page menu: opens the sign dialog for the spot that was right-clicked.
+    pub(crate) fn sign_here(&mut self, ui: &AppWindow) {
+        let Some((x, y)) = self.menu_point else { return };
+        let Some((page, point)) = self.fraction_at(x, y) else { return };
+        self.text_target = Some(TextTarget { page, point });
+        let b = ui.global::<Bridge>();
+        if b.get_sign_name().is_empty() {
+            let name = std::env::var("USERNAME").unwrap_or_default();
+            b.set_sign_name(name.into());
+        }
+        b.set_sign_open(true);
+    }
+
+    pub(crate) fn sign_place(&mut self, ui: &AppWindow, text: String) {
+        let b = ui.global::<Bridge>();
+        let (Some(target), Some(doc)) = (self.text_target.take(), self.active_id()) else { return };
+        if text.trim().is_empty() {
+            self.text_target = Some(target);
+            return;
+        }
+        b.set_sign_open(false);
+        let color = [[27, 27, 27], [0, 99, 177], [26, 35, 126]][(b.get_sign_color().max(0) as usize).min(2)];
+        let font = b.get_sign_font().clamp(0, 2) as u8;
+        self.renderer.edit(EditJob::Stamp { doc, page: target.page, turns: self.turns, point: target.point, kind: StampKind::Signature { text, font, color } });
+        self.notify(ui, "Signature added. Drag it to move it, pull a corner to resize it.");
+    }
+
     pub(crate) fn text_at(&mut self, ui: &AppWindow, x: f32, y: f32) {
         let Some((page, point)) = self.fraction_at(x, y) else { return };
         self.text_target = Some(TextTarget { page, point });
         let b = ui.global::<Bridge>();
+        b.set_text_note(false);
         b.set_text_x(x);
         b.set_text_y(y);
         b.set_text_open(true);
@@ -247,8 +291,10 @@ impl Viewer {
             self.renderer.edit(EditJob::Note { doc, page: target.page, turns: self.turns, point: target.point, text });
             return;
         }
-        let color = DRAW_COLORS[(ui.global::<Bridge>().get_draw_color().max(0) as usize).min(4)];
-        self.renderer.edit(EditJob::Text { doc, page: target.page, turns: self.turns, point: target.point, text, size: TEXT_SIZE, color });
+        let b = ui.global::<Bridge>();
+        let color = DRAW_COLORS[(b.get_text_color().max(0) as usize).min(4)];
+        let size = TEXT_SIZES[(b.get_text_size().max(0) as usize).min(TEXT_SIZES.len() - 1)];
+        self.renderer.edit(EditJob::Stamp { doc, page: target.page, turns: self.turns, point: target.point, kind: StampKind::Text { text, size, color } });
     }
 
     /// Page menu: type a note at the spot that was right-clicked.
@@ -258,6 +304,7 @@ impl Viewer {
         self.note_mode = true;
         self.text_target = Some(TextTarget { page, point });
         let b = ui.global::<Bridge>();
+        b.set_text_note(true);
         b.set_text_x(x);
         b.set_text_y(y);
         b.set_text_open(true);
@@ -337,7 +384,7 @@ impl Viewer {
         let Some([_, _, pw, ph]) = self.page_rect(page) else { return 0 };
         let current = self.selected.as_ref().map(|s| (s.page, s.index));
         let hit = self.annots.iter().rev().find(|(p, i, kind, r, _)| {
-            *p == page && matches!(*kind, "Drawing" | "Shape" | "Note") && annot_hit(kind, r, f, [pw, ph], current == Some((*p, *i)))
+            *p == page && matches!(*kind, "Drawing" | "Shape" | "Note" | "Image" | "Text") && annot_hit(kind, r, f, [pw, ph], current == Some((*p, *i)))
         });
         match hit {
             Some((p, i, kind, r, text)) => {

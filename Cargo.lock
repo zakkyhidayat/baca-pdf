@@ -441,6 +441,7 @@ name = "baca-pdf"
 version = "1.0.0"
 dependencies = [
  "chrono",
+ "image",
  "pdfium-render",
  "slint",
  "windows",
@@ -3159,6 +3160,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "console_log",
+ "image",
  "itertools 0.15.0",
  "js-sys",
  "libloading 0.9.0",

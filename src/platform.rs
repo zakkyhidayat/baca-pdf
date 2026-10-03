@@ -67,6 +67,25 @@ pub fn ask_yes_no(title: &str, text: &str) -> bool {
     unsafe { MessageBoxW(Some(GetActiveWindow()), &HSTRING::from(text), &HSTRING::from(title), MB_YESNO | MB_ICONQUESTION) == IDYES }
 }
 
+/// Asks for a picture to put on a page.
+pub fn pick_image() -> Option<PathBuf> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let filters = [COMDLG_FILTERSPEC { pszName: w!("Pictures (PNG, JPG)"), pszSpec: w!("*.png;*.jpg;*.jpeg") }];
+        dialog.SetFileTypes(&filters).ok()?;
+        dialog.SetTitle(w!("Add image")).ok()?;
+        let options = dialog.GetOptions().ok()?;
+        dialog.SetOptions(options | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
+        dialog.Show(Some(GetActiveWindow())).ok()?;
+        let item = dialog.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok();
+        CoTaskMemFree(Some(name.0 as _));
+        path.map(PathBuf::from)
+    }
+}
+
 /// Border and title bar thickness around a client area, at the system DPI.
 fn frame() -> (i32, i32, i32, i32) {
     let mut r = RECT::default();

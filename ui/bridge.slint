@@ -320,6 +320,23 @@ export global Bridge {
     // 0 pen, 1 rectangle, 2 ellipse, 3 line, 4 arrow.
     in-out property <int> draw-shape;
     callback note-here();
+    callback text-here();
+    callback image-here();
+    callback sign-here();
+    callback sign-place(string);
+    // Text placed on a page: its size and color are chosen in the box it is typed in.
+    in-out property <bool> text-note;
+    in-out property <int> text-size: 1;
+    out property <[int]> text-sizes: [10, 12, 14, 18, 24, 32, 48];
+    in-out property <int> text-color: 1;
+    // The sign dialog.
+    in-out property <bool> sign-open;
+    in-out property <string> sign-name;
+    in-out property <int> sign-font;
+    in-out property <int> sign-color;
+    out property <[string]> sign-fonts: ["Segoe Script", "Ink Free", "Gabriola"];
+    out property <[color]> sign-colors: [#1b1b1b, #0063b1, #1a237e];
+    out property <[string]> sign-color-names: ["Black", "Blue", "Dark blue"];
     // Auto-scroll: the page moves down by itself; the speed is a step from 1 to 8.
     in-out property <bool> auto-scroll;
     in-out property <int> auto-speed: 3;

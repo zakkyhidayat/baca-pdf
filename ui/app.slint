@@ -8,7 +8,7 @@ import { TitleBar } from "titlebar.slint";
 import { Toolbar, FindFlyout, InkOptions } from "toolbar.slint";
 import { Sidebar, PageArea } from "viewer.slint";
 import { Home } from "home.slint";
-import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
+import { PropertiesDialog, ShortcutsDialog, AboutDialog, ConfirmDialog, SignDialog } from "dialogs.slint";
 
 export { Bridge, Theme, Metrics, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow, AnnotationRow }
 
@@ -364,6 +364,7 @@ export component AppWindow inherits Window {
     if Bridge.shortcuts-open: ShortcutsDialog { }
     if Bridge.about-open: AboutDialog { }
     if Bridge.confirm-open: ConfirmDialog { }
+    if Bridge.sign-open: SignDialog { }
 
     // The tooltip of whichever button the pointer rests on, kept inside the window.
     if Tip.on: Rectangle {

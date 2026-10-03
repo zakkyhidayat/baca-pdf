@@ -10,6 +10,7 @@ mod single;
 mod sidebar;
 mod store;
 mod tabs;
+mod sign;
 mod titlebar;
 mod undo;
 mod view;
@@ -639,6 +640,10 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     b.on_toggle_bookmark(|| with_viewer(|viewer, ui| viewer.toggle_bookmark(ui)));
     b.on_thumb_menu_prepare(|page| with_viewer(|viewer, ui| viewer.thumb_menu_prepare(ui, page.max(0) as usize)));
+    b.on_text_here(|| with_viewer(|viewer, ui| viewer.text_here(ui)));
+    b.on_image_here(|| with_viewer(|viewer, ui| viewer.image_here(ui)));
+    b.on_sign_here(|| with_viewer(|viewer, ui| viewer.sign_here(ui)));
+    b.on_sign_place(|text| with_viewer(|viewer, ui| viewer.sign_place(ui, text.to_string())));
     b.on_note_here(|| with_viewer(|viewer, ui| viewer.note_here(ui)));
     b.on_page_menu_prepare(|x, y| with_viewer(|viewer, ui| viewer.page_menu_prepare(ui, x, y)));
     b.on_toggle_bookmark_page(|page| with_viewer(|viewer, ui| viewer.toggle_bookmark_page(ui, page.max(0) as usize + 1)));

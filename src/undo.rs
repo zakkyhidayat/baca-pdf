@@ -38,7 +38,7 @@ const LIMIT: usize = 100;
 fn page_of(job: &EditJob) -> usize {
     match job {
         EditJob::Highlight { pieces, .. } => pieces.first().map(|p| p.page).unwrap_or(0),
-        EditJob::Ink { page, .. } | EditJob::Note { page, .. } => *page,
+        EditJob::Ink { page, .. } | EditJob::Note { page, .. } | EditJob::Stamp { page, .. } => *page,
         _ => 0,
     }
 }
@@ -110,7 +110,7 @@ impl History {
     }
 
     /// Makes one annotation from a job, giving it `id` (or a new one). Returns the page, if one was made.
-    fn make(&mut self, document: &PdfDocument, job: EditJob, id: Option<u64>) -> Result<Option<(usize, u64)>, String> {
+    fn make(&mut self, document: &mut PdfDocument, job: EditJob, id: Option<u64>) -> Result<Option<(usize, u64)>, String> {
         let page = page_of(&job);
         self.sync(document, page);
         let made = render::create(document, &job)?;
@@ -127,7 +127,7 @@ impl History {
     }
 
     /// A new highlight, drawing or note.
-    pub fn create(&mut self, document: &PdfDocument, job: EditJob) -> Result<Vec<usize>, String> {
+    pub fn create(&mut self, document: &mut PdfDocument, job: EditJob) -> Result<Vec<usize>, String> {
         // A highlight spanning several pages becomes one annotation per piece, each coming back on its own.
         let jobs: Vec<EditJob> = match job {
             EditJob::Highlight { doc, pieces, turns, color, style } => {
@@ -193,7 +193,7 @@ impl History {
         Ok(Some(page))
     }
 
-    fn restore_id(&mut self, document: &PdfDocument, id: u64) -> Result<Option<usize>, String> {
+    fn restore_id(&mut self, document: &mut PdfDocument, id: u64) -> Result<Option<usize>, String> {
         let Some(job) = self.made.get(&id).cloned() else { return Ok(None) };
         Ok(self.make(document, job, Some(id))?.map(|(page, _)| page))
     }
@@ -205,7 +205,7 @@ impl History {
     }
 
     /// Takes the last step back (`undo`) or forward again, and returns the pages that changed.
-    pub fn step(&mut self, document: &PdfDocument, undo: bool) -> Result<Vec<usize>, String> {
+    pub fn step(&mut self, document: &mut PdfDocument, undo: bool) -> Result<Vec<usize>, String> {
         let entry = if undo { self.undo.pop() } else { self.redo.pop() };
         let Some(entry) = entry else { return Ok(Vec::new()) };
         let mut pages = Vec::new();
@@ -264,6 +264,9 @@ impl History {
             Some(EditJob::Highlight { .. }) => "highlight",
             Some(EditJob::Ink { .. }) => "drawing",
             Some(EditJob::Note { .. }) => "note",
+            Some(EditJob::Stamp { kind: render::StampKind::Image(_), .. }) => "picture",
+            Some(EditJob::Stamp { kind: render::StampKind::Signature { .. }, .. }) => "signature",
+            Some(EditJob::Stamp { .. }) => "text",
             _ => "annotation",
         };
         match entry {

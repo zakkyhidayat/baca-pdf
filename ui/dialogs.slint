@@ -196,6 +196,114 @@ export component AboutDialog inherits Dialog {
     }
 }
 
+// Type a name, pick a handwriting style and ink, and place the result on the page like a picture.
+export component SignDialog inherits Dialog {
+    title: "Sign";
+    card-width: 520px;
+    close => { Bridge.sign-open = false; }
+
+    VerticalLayout {
+        spacing: 12px;
+        Rectangle {
+            height: 38px;
+            border-radius: 4px;
+            background: Theme.surface;
+            border-width: 2px;
+            border-color: Theme.accent;
+            name-field := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text <=> Bridge.sign-name;
+                single-line: true;
+                font-size: 15px;
+                vertical-alignment: center;
+                color: Theme.text;
+                selection-background-color: Theme.accent;
+                selection-foreground-color: Theme.on-accent;
+                accessible-label: "Your name. Press Enter to place the signature";
+                accepted => { Bridge.sign-place(self.text); }
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        Bridge.sign-open = false;
+                        return accept;
+                    }
+                    reject
+                }
+                init => { self.focus(); self.select-all(); }
+            }
+        }
+        for face[i] in Bridge.sign-fonts: Rectangle {
+            height: 56px;
+            border-radius: 6px;
+            background: face-area.has-hover ? Theme.hover : transparent;
+            border-width: Bridge.sign-font == i ? 2px : 1px;
+            border-color: Bridge.sign-font == i ? Theme.accent : Theme.divider;
+            accessible-role: button;
+            accessible-label: face + " style";
+            accessible-checkable: true;
+            accessible-checked: Bridge.sign-font == i;
+            accessible-action-default => { Bridge.sign-font = i; }
+            Text {
+                x: 14px;
+                width: parent.width - 28px;
+                text: Bridge.sign-name == "" ? face : Bridge.sign-name;
+                font-family: face;
+                font-size: 30px;
+                color: Bridge.sign-colors[Bridge.sign-color];
+                overflow: elide;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            face-area := TouchArea {
+                clicked => { Bridge.sign-font = i; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            Text {
+                text: "Ink";
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            for ink[i] in Bridge.sign-colors: Rectangle {
+                width: 36px;
+                height: 36px;
+                accessible-role: button;
+                accessible-label: Bridge.sign-color-names[i];
+                accessible-checkable: true;
+                accessible-checked: Bridge.sign-color == i;
+                accessible-action-default => { Bridge.sign-color = i; }
+                Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: ink;
+                    border-width: Bridge.sign-color == i ? 3px : 1px;
+                    border-color: Bridge.sign-color == i ? Theme.accent : Theme.divider;
+                }
+                TouchArea {
+                    clicked => { Bridge.sign-color = i; }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            SecondaryButton {
+                label: "Cancel";
+                clicked => { Bridge.sign-open = false; }
+            }
+            PrimaryButton {
+                label: "Place signature";
+                clicked => { Bridge.sign-place(Bridge.sign-name); }
+            }
+        }
+    }
+}
+
 // Asked before a tab with drawings or highlights closes: they only exist in memory until a copy is saved.
 export component ConfirmDialog inherits Dialog {
     title: "Save your changes?";

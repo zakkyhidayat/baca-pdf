@@ -981,16 +981,73 @@ export component PageArea inherits Rectangle {
                 }
                 x: Bridge.text-x;
                 y: Bridge.text-y;
-                width: max(140px, typed.preferred-width + 20px);
-                height: 28px;
+                width: max(Bridge.text-note ? 140px : 280px, typed.preferred-width + 20px);
+                height: Bridge.text-note ? 28px : 66px;
                 background: Theme.surface;
                 border-width: 2px;
                 border-color: Theme.accent;
                 border-radius: 4px;
+                // Size and color, for text that is placed on the page itself.
+                if !Bridge.text-note: HorizontalLayout {
+                    x: 6px;
+                    y: 30px;
+                    height: 32px;
+                    width: parent.width - 12px;
+                    spacing: 2px;
+                    for c[i] in Bridge.draw-colors: Rectangle {
+                        width: 26px;
+                        accessible-role: button;
+                        accessible-label: Bridge.draw-names[i];
+                        accessible-checkable: true;
+                        accessible-checked: Bridge.text-color == i;
+                        accessible-action-default => { Bridge.text-color = i; }
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            background: c;
+                            border-width: Bridge.text-color == i ? 3px : 1px;
+                            border-color: Bridge.text-color == i ? Theme.accent : Theme.divider;
+                        }
+                        TouchArea {
+                            clicked => { Bridge.text-color = i; }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Rectangle {
+                        width: 28px;
+                        border-radius: 4px;
+                        background: smaller.has-hover ? Theme.hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Smaller text";
+                        accessible-action-default => { Bridge.text-size = max(0, Bridge.text-size - 1); }
+                        Text { text: "A-"; color: Theme.text; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                        smaller := TouchArea { clicked => { Bridge.text-size = max(0, Bridge.text-size - 1); } }
+                    }
+                    Text {
+                        width: 40px;
+                        text: Bridge.text-sizes[Bridge.text-size] + " pt";
+                        color: Theme.text-secondary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    Rectangle {
+                        width: 28px;
+                        border-radius: 4px;
+                        background: larger.has-hover ? Theme.hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Larger text";
+                        accessible-action-default => { Bridge.text-size = min(Bridge.text-sizes.length - 1, Bridge.text-size + 1); }
+                        Text { text: "A+"; color: Theme.text; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                        larger := TouchArea { clicked => { Bridge.text-size = min(Bridge.text-sizes.length - 1, Bridge.text-size + 1); } }
+                    }
+                }
                 typed := TextInput {
                     x: 8px;
                     width: parent.width - 16px;
-                    height: parent.height;
+                    height: 28px;
                     font-size: 14px;
                     single-line: true;
                     vertical-alignment: center;
@@ -1028,6 +1085,21 @@ export component PageArea inherits Rectangle {
                     glyph: "\u{E8F2}";
                     label: "Add a note here";
                     clicked => { Bridge.note-here(); }
+                }
+                MenuItem {
+                    glyph: "\u{E8E9}";
+                    label: "Add text here";
+                    clicked => { Bridge.text-here(); }
+                }
+                MenuItem {
+                    glyph: "\u{E91B}";
+                    label: "Add image here...";
+                    clicked => { Bridge.image-here(); }
+                }
+                MenuItem {
+                    glyph: "\u{E70F}";
+                    label: "Sign here...";
+                    clicked => { Bridge.sign-here(); }
                 }
             }
         }

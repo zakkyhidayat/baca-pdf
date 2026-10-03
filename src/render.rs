@@ -112,13 +112,20 @@ pub enum LinkTarget {
     Page(usize),
 }
 
+/// What a placed stamp shows.
+#[derive(Clone)]
+pub enum StampKind {
+    Image(PathBuf),
+    Signature { text: String, font: u8, color: [u8; 3] },
+    Text { text: String, size: f32, color: [u8; 3] },
+}
+
 /// Changes to the open document, made on the PDFium thread.
 #[derive(Clone)]
 pub enum EditJob {
     Highlight { doc: u64, pieces: Vec<SelectPiece>, turns: u8, color: [u8; 3], style: u8 },
     Ink { doc: u64, page: usize, turns: u8, points: Vec<[f32; 2]>, color: [u8; 3], width: f32 },
     Erase { doc: u64, page: usize, turns: u8, point: [f32; 2] },
-    Text { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String, size: f32, color: [u8; 3] },
     PageText { doc: u64, page: usize },
     Save { doc: u64, path: PathBuf, token: u64 },
     /// Writes the changes into the open file itself, keeping the version before the first save beside it.
@@ -131,6 +138,7 @@ pub enum EditJob {
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
     DeleteAnnotation { doc: u64, page: usize, index: usize },
     SetColor { doc: u64, page: usize, index: usize, color: [u8; 3] },
+    Stamp { doc: u64, page: usize, turns: u8, point: [f32; 2], kind: StampKind },
     Undo { doc: u64 },
     Redo { doc: u64 },
 }
@@ -141,7 +149,6 @@ impl EditJob {
             EditJob::Highlight { doc, .. }
             | EditJob::Ink { doc, .. }
             | EditJob::Erase { doc, .. }
-            | EditJob::Text { doc, .. }
             | EditJob::PageText { doc, .. }
             | EditJob::Save { doc, .. }
             | EditJob::SaveOriginal { doc, .. }
@@ -150,6 +157,7 @@ impl EditJob {
             | EditJob::SetNote { doc, .. }
             | EditJob::SetBounds { doc, .. }
             | EditJob::SetColor { doc, .. }
+            | EditJob::Stamp { doc, .. }
             | EditJob::Undo { doc }
             | EditJob::Redo { doc }
             | EditJob::Note { doc, .. }
@@ -466,7 +474,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                 // What can be undone goes through the history.
                 let history = histories.entry(doc).or_default();
                 let tracked = match &job {
-                    EditJob::Highlight { .. } | EditJob::Ink { .. } | EditJob::Note { .. } => Some(history.create(document, job.clone())),
+                    EditJob::Highlight { .. } | EditJob::Ink { .. } | EditJob::Note { .. } | EditJob::Stamp { .. } => Some(history.create(document, job.clone())),
                     EditJob::DeleteAnnotation { page, index, .. } => Some(history.delete(document, *page, *index)),
                     EditJob::SetBounds { page, index, rect, .. } => Some(history.set_bounds(document, *page, *index, *rect)),
                     EditJob::SetColor { page, index, color, .. } => Some(history.set_color(document, *page, *index, *color)),
@@ -499,11 +507,6 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         let (pages, message) = split(edit_erase(document, ledger, page, turns, point).map(|hit| if hit { vec![page] } else { vec![] }));
                         deliver(Event::Annotated { doc, pages, message });
                     }
-                    EditJob::Text { page, turns, point, text, size, color, .. } => {
-                        let (pages, message) =
-                            split(edit_text(document, ledger, page, turns, point, &text, size, color).map(|_| vec![page]));
-                        deliver(Event::Annotated { doc, pages, message });
-                    }
                     EditJob::PageText { page, .. } => {
                         let text = document.pages().get(page as _).ok().and_then(|p| p.text().ok().map(|t| t.all())).unwrap_or_default();
                         deliver(Event::PageText { doc, text });
@@ -525,7 +528,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         let (pages, message) = split(set_bounds(document, page, index, rect).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
                     }
-                    EditJob::Undo { .. } | EditJob::Redo { .. } | EditJob::SetColor { .. } => {}
+                    EditJob::Undo { .. } | EditJob::Redo { .. } | EditJob::SetColor { .. } | EditJob::Stamp { .. } => {}
                     EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document, history) }),
                     EditJob::DeleteAnnotation { page, index, .. } => {
                         let (pages, message) = split(delete_annotation(document, page, index).map(|p| vec![p]));
@@ -1018,6 +1021,13 @@ fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) 
                 }
                 PdfPageAnnotationType::FreeText => "Text",
                 PdfPageAnnotationType::Text => "Note",
+                PdfPageAnnotationType::Stamp => {
+                    if annotation.contents().is_some_and(|c| !c.trim().is_empty()) {
+                        "Text"
+                    } else {
+                        "Image"
+                    }
+                }
                 PdfPageAnnotationType::Square | PdfPageAnnotationType::Circle | PdfPageAnnotationType::Line => "Shape",
                 _ => continue,
             };
@@ -1025,6 +1035,7 @@ fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) 
             let preview = match kind {
                 "Highlight" | "Underline" | "Strikethrough" => text.as_ref().map(|t| t.inside_rect(bounds)).unwrap_or_default(),
                 "Drawing" => "Freehand line or shape".to_string(),
+                "Image" => "Picture or signature".to_string(),
                 _ => annotation.contents().unwrap_or_default(),
             };
             let preview: String = preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(if kind == "Note" { 2000 } else { 80 }).collect();
@@ -1069,6 +1080,85 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
     Ok(index)
 }
 
+/// A picture from a file, shrunk when it is far larger than a page can show.
+fn load_image(path: &std::path::Path) -> Result<image::DynamicImage, String> {
+    let img = image::open(path).map_err(|e| format!("That picture could not be read ({e})."))?;
+    let img = if img.width().max(img.height()) > 2400 { img.resize(2400, 2400, image::imageops::FilterType::Lanczos3) } else { img };
+    Ok(image::DynamicImage::ImageRgba8(img.to_rgba8()))
+}
+
+/// A picture, a signature or a line of text placed on the page as a stamp annotation, so it can be
+/// moved and resized afterwards like a drawing.
+fn edit_stamp(document: &mut PdfDocument, index: usize, turns: u8, point: [f32; 2], kind: &StampKind) -> Result<usize, String> {
+    if turns % 4 != 0 {
+        return Err("Turn the page back upright to add this.".into());
+    }
+    let picture = match kind {
+        StampKind::Image(path) => Some(load_image(path)?),
+        StampKind::Signature { text, font, color } => Some(crate::sign::render(text, *font, *color)?),
+        StampKind::Text { .. } => None,
+    };
+    let font = match kind {
+        StampKind::Text { .. } => Some(document.fonts_mut().helvetica()),
+        _ => None,
+    };
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let (config, vw, vh) = virtual_config(&page, turns);
+    let (x, y) = page
+        .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
+        .map_err(|e| describe(&e))?;
+    let (x, y) = (x.value, y.value);
+    let (pw, ph) = (page.width().value, page.height().value);
+    let mut annotation = page.annotations_mut().create_stamp_annotation().map_err(|e| describe(&e))?;
+    match (kind, picture) {
+        (StampKind::Text { text, size, color }, _) => {
+            // The frame must be right before the object goes in: the appearance is cut to it then.
+            let mut object = PdfPageTextObject::new(document, text, font.ok_or("No font.")?, PdfPoints::new(*size)).map_err(|e| describe(&e))?;
+            object.set_fill_color(pdf_color(*color)).map_err(|e| describe(&e))?;
+            let b = object.bounds().map_err(|e| describe(&e))?;
+            let (w, h) = (b.right().value - b.left().value, b.top().value - b.bottom().value);
+            let left = x.clamp(0.0, (pw - w).max(0.0));
+            let top = y.clamp(h.min(ph), ph);
+            object
+                .translate(PdfPoints::new(left - b.left().value), PdfPoints::new(top - h - b.bottom().value))
+                .map_err(|e| describe(&e))?;
+            annotation
+                .set_bounds(PdfRect::new(PdfPoints::new(top - h), PdfPoints::new(left), PdfPoints::new(top), PdfPoints::new(left + w)))
+                .map_err(|e| describe(&e))?;
+            annotation.objects_mut().add_text_object(object).map_err(|e| describe(&e))?;
+            annotation.set_contents(text).map_err(|e| describe(&e))?;
+        }
+        (_, Some(img)) => {
+            let (iw, ih) = (img.width().max(1) as f32, img.height().max(1) as f32);
+            let (mut w, mut h) = if matches!(kind, StampKind::Signature { .. }) {
+                let h = 44.0;
+                (h * iw / ih, h)
+            } else {
+                let w = (pw * 0.4).min(240.0);
+                (w, w * ih / iw)
+            };
+            let limit = (pw * 0.6).min(ph * 0.5);
+            if w > limit || h > limit {
+                let k = (limit / w).min(limit / h);
+                w *= k;
+                h *= k;
+            }
+            let left = x.clamp(0.0, (pw - w).max(0.0));
+            let top = y.clamp(h.min(ph), ph);
+            let bottom = top - h;
+            let mut object = PdfPageImageObject::new_with_size(document, &img, PdfPoints::new(w), PdfPoints::new(h)).map_err(|e| describe(&e))?;
+            object.translate(PdfPoints::new(left), PdfPoints::new(bottom)).map_err(|e| describe(&e))?;
+            annotation
+                .set_bounds(PdfRect::new(PdfPoints::new(bottom), PdfPoints::new(left), PdfPoints::new(top), PdfPoints::new(left + w)))
+                .map_err(|e| describe(&e))?;
+            annotation.objects_mut().add_image_object(object).map_err(|e| describe(&e))?;
+        }
+        _ => return Err("There was nothing to place.".into()),
+    }
+    stamp!(annotation);
+    Ok(index)
+}
+
 /// Moves or resizes an annotation to the rectangle given as fractions of the page (left, top, right, bottom).
 pub(crate) fn set_bounds(document: &PdfDocument, index: usize, annotation: usize, rect: [f32; 4]) -> Result<usize, String> {
     let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
@@ -1086,11 +1176,12 @@ pub(crate) fn set_bounds(document: &PdfDocument, index: usize, annotation: usize
 }
 
 /// Makes the annotation a creation job describes. Returns the pages it touched.
-pub(crate) fn create(document: &PdfDocument, job: &EditJob) -> Result<Vec<usize>, String> {
+pub(crate) fn create(document: &mut PdfDocument, job: &EditJob) -> Result<Vec<usize>, String> {
     match job {
         EditJob::Highlight { pieces, turns, color, style, .. } => edit_highlight(document, pieces, *turns, *color, *style),
         EditJob::Ink { page, turns, points, color, width, .. } => edit_ink(document, *page, *turns, points, *color, *width).map(|p| vec![p]),
         EditJob::Note { page, turns, point, text, .. } => edit_note(document, *page, *turns, *point, text).map(|p| vec![p]),
+        EditJob::Stamp { page, turns, point, kind, .. } => edit_stamp(document, *page, *turns, *point, kind).map(|p| vec![p]),
         _ => Err("That cannot be made again.".into()),
     }
 }
@@ -1346,37 +1437,6 @@ fn edit_erase(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn edit_text(
-    document: &mut PdfDocument,
-    ledger: &mut Vec<(usize, [f32; 4])>,
-    index: usize,
-    turns: u8,
-    point: [f32; 2],
-    text: &str,
-    size: f32,
-    color: [u8; 3],
-) -> Result<(), String> {
-    if turns % 4 != 0 {
-        return Err("Turn the page back upright to add text.".into());
-    }
-    let font = document.fonts_mut().helvetica();
-    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
-    let (config, vw, vh) = virtual_config(&page, turns);
-    let (x, y) = page
-        .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
-        .map_err(|e| describe(&e))?;
-    // The click is the top left of the text; PDF places text by its baseline.
-    let mut object = page
-        .objects_mut()
-        .create_text_object(x, PdfPoints::new(y.value - size * 0.8), text, font, PdfPoints::new(size))
-        .map_err(|e| describe(&e))?;
-    object.set_fill_color(pdf_color(color)).map_err(|e| describe(&e))?;
-    let bounds = object.bounds().map_err(|e| describe(&e))?;
-    ledger.push((index, [bounds.left().value, bounds.bottom().value, bounds.right().value, bounds.top().value]));
-    page.regenerate_content().map_err(|e| describe(&e))?;
-    Ok(())
-}
-
 fn outline(document: &PdfDocument) -> Vec<OutlineItem> {
     fn walk(b: Option<PdfBookmark>, depth: usize, out: &mut Vec<OutlineItem>) {
         let mut next = b;
