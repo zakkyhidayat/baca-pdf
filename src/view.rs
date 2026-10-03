@@ -92,6 +92,31 @@ impl Viewer {
         scale.clamp(MIN_ZOOM * BASE_SCALE, MAX_ZOOM * BASE_SCALE)
     }
 
+    /// Page Fit sizes each page (or spread) to the window on its own, so a landscape page and a
+    /// portrait page both fill the view. Every other zoom uses one scale for the whole document.
+    fn scale_of_group(&self, ui: &AppWindow, g: &std::ops::Range<usize>) -> f32 {
+        if !matches!(self.zoom, Zoom::Fit) || self.scroll_mode == SCROLL_WRAPPED {
+            return self.scale;
+        }
+        let (vw, vh) = self.viewport(ui);
+        let gap = if g.len() > 1 { GAP * (g.len() as f32 - 1.0) } else { 0.0 };
+        let w: f32 = g.clone().map(|i| self.page_size(i).0).sum::<f32>().max(1.0);
+        let h: f32 = g.clone().map(|i| self.page_size(i).1).fold(1.0, f32::max);
+        let fit = ((vw - 2.0 * MARGIN - gap).max(80.0) / w).min((vh - 2.0 * MARGIN).max(80.0) / h);
+        fit.clamp(MIN_ZOOM * BASE_SCALE, MAX_ZOOM * BASE_SCALE)
+    }
+
+    fn scale_of_page(&self, ui: &AppWindow, i: usize) -> f32 {
+        if !matches!(self.zoom, Zoom::Fit) {
+            return self.scale;
+        }
+        let groups = self.groups();
+        match groups.iter().find(|g| g.contains(&i)) {
+            Some(g) => self.scale_of_group(ui, g),
+            None => self.scale,
+        }
+    }
+
     /// Places every page for the current zoom, scroll mode and spread mode.
     pub(crate) fn relayout(&mut self, ui: &AppWindow) {
         let count = self.page_count();
@@ -99,14 +124,15 @@ impl Viewer {
             return;
         }
         let (vw, vh) = self.viewport(ui);
-        let scale = self.scale;
-        let sizes: Vec<(f32, f32)> = (0..count)
-            .map(|i| {
-                let (w, h) = self.page_size(i);
-                (w * scale, h * scale)
-            })
-            .collect();
         let groups = self.groups();
+        let mut sizes: Vec<(f32, f32)> = vec![(0.0, 0.0); count];
+        for g in &groups {
+            let scale = self.scale_of_group(ui, g);
+            for i in g.clone() {
+                let (w, h) = self.page_size(i);
+                sizes[i] = (w * scale, h * scale);
+            }
+        }
         let spans: Vec<(f32, f32)> = groups
             .iter()
             .map(|g| {
@@ -405,7 +431,8 @@ impl Viewer {
     fn full_px(&self, ui: &AppWindow, i: usize) -> (u32, u32) {
         let (w, h) = self.page_size(i);
         let sf = ui.window().scale_factor();
-        ((w * self.scale * sf).round().max(1.0) as u32, (h * self.scale * sf).round().max(1.0) as u32)
+        let scale = self.scale_of_page(ui, i);
+        ((w * scale * sf).round().max(1.0) as u32, (h * scale * sf).round().max(1.0) as u32)
     }
 
     fn base_px(&self, ui: &AppWindow, i: usize) -> (u32, u32) {
