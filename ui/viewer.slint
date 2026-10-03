@@ -537,9 +537,10 @@ export component PageArea inherits Rectangle {
                 y: 0;
                 width: scroller.content-width;
                 height: scroller.content-height;
-                mouse-cursor: Bridge.tool == 2 || Bridge.tool == 4 ? MouseCursor.crosshair : Bridge.tool == 3 ? MouseCursor.pointer : MouseCursor.text;
+                mouse-cursor: Bridge.zoom-area || Bridge.tool == 2 || Bridge.tool == 4 ? MouseCursor.crosshair : Bridge.tool == 3 ? MouseCursor.pointer : MouseCursor.text;
                 property <bool> selecting;
                 property <bool> drawing;
+                property <bool> zooming;
                 property <length> down-x;
                 property <length> down-y;
                 pointer-event(event) => {
@@ -557,7 +558,16 @@ export component PageArea inherits Rectangle {
                     if (event.button != PointerEventButton.left || Bridge.hand-tool) { return; }
                     if (event.kind == PointerEventKind.down) {
                         root.focus-document();
-                        if (Bridge.tool == 0 || Bridge.tool == 1) {
+                        if (Bridge.zoom-area || (event.modifiers.control && Bridge.tool == 0)) {
+                            self.zooming = true;
+                            self.down-x = self.mouse-x;
+                            self.down-y = self.mouse-y;
+                            Bridge.zr-x = self.mouse-x;
+                            Bridge.zr-y = self.mouse-y;
+                            Bridge.zr-w = 0px;
+                            Bridge.zr-h = 0px;
+                            Bridge.zr-on = true;
+                        } else if (Bridge.tool == 0 || Bridge.tool == 1) {
                             self.selecting = true;
                             self.down-x = self.mouse-x;
                             self.down-y = self.mouse-y;
@@ -572,6 +582,14 @@ export component PageArea inherits Rectangle {
                         }
                     }
                     if (event.kind == PointerEventKind.up) {
+                        if (self.zooming) {
+                            self.zooming = false;
+                            Bridge.zr-on = false;
+                            Bridge.zoom-area = false;
+                            if (Bridge.zr-w > 12px && Bridge.zr-h > 12px) {
+                                Bridge.zoom-to-rect(Bridge.zr-x, Bridge.zr-y, Bridge.zr-w, Bridge.zr-h);
+                            }
+                        }
                         if (self.drawing) {
                             self.drawing = false;
                             Bridge.stroke-point(self.mouse-x, self.mouse-y);
@@ -589,6 +607,12 @@ export component PageArea inherits Rectangle {
                     }
                 }
                 moved => {
+                    if (self.zooming) {
+                        Bridge.zr-x = min(self.down-x, self.mouse-x);
+                        Bridge.zr-y = min(self.down-y, self.mouse-y);
+                        Bridge.zr-w = abs(self.mouse-x - self.down-x);
+                        Bridge.zr-h = abs(self.mouse-y - self.down-y);
+                    }
                     if (self.selecting) { Bridge.select-at(1, self.mouse-x, self.mouse-y); }
                     if (self.drawing) { Bridge.stroke-point(self.mouse-x, self.mouse-y); }
                 }
@@ -603,6 +627,18 @@ export component PageArea inherits Rectangle {
                     if (Bridge.scroll-wheel(event.delta-y)) { return accept; }
                     reject
                 }
+            }
+
+            // The area being picked for Zoom to area.
+            if Bridge.zr-on: Rectangle {
+                x: Bridge.zr-x;
+                y: Bridge.zr-y;
+                width: Bridge.zr-w;
+                height: Bridge.zr-h;
+                background: Theme.accent.with-alpha(0.15);
+                border-width: 1px;
+                border-color: Theme.accent;
+                accessible-role: none;
             }
 
             // The line being drawn, before it becomes part of the page.

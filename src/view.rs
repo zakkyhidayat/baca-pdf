@@ -390,6 +390,28 @@ impl Viewer {
         self.refresh(ui);
     }
 
+    /// Zooms so the rectangle (in document coordinates) fills the window, and puts it in the middle.
+    pub(crate) fn zoom_to_rect(&mut self, ui: &AppWindow, x: f32, y: f32, w: f32, h: f32) {
+        if self.doc.is_none() || w < 1.0 || h < 1.0 {
+            return;
+        }
+        let (vw, vh) = self.viewport(ui);
+        let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+        let Some(page) = self.page_near(cx, cy) else { return };
+        let now = self.scale_of_page(ui, page);
+        let pad = 16.0;
+        let factor = ((vw - 2.0 * pad).max(40.0) / w).min((vh - 2.0 * pad).max(40.0) / h);
+        let scale = (now * factor).clamp(MIN_ZOOM * BASE_SCALE, MAX_ZOOM * BASE_SCALE);
+        let (sx, sy) = self.scroll(ui);
+        let (ax, ay) = (cx - sx, cy - sy);
+        self.zoom = Zoom::Custom(scale / BASE_SCALE);
+        self.zoom_to(ui, scale, ax, ay);
+        // The picked point stayed under (ax, ay); move it to the middle of the window.
+        let (sx2, sy2) = self.scroll(ui);
+        self.set_scroll(ui, sx2 + ax - vw / 2.0, sy2 + ay - vh / 2.0);
+        self.refresh(ui);
+    }
+
     /// Applies a zoom choice from the list, keeping the middle of the window in place.
     pub(crate) fn set_zoom(&mut self, ui: &AppWindow, zoom: Zoom) {
         self.zoom = zoom;

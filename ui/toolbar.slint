@@ -698,6 +698,13 @@ export component Toolbar inherits Rectangle {
                             }
                         }
                         MenuRule { }
+                        MenuItem {
+                            glyph: "\u{E8A3}";
+                            label: "Zoom to area";
+                            hint: "Ctrl+drag";
+                            clicked => { Bridge.zoom-area = true; }
+                        }
+                        MenuRule { }
                         Rectangle {
                             height: Metrics.touch ? 44px : 38px;
                             accessible-role: button;

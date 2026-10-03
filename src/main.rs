@@ -444,6 +444,9 @@ fn main() -> Result<(), slint::PlatformError> {
             viewer.zoom_to(ui, scale, ax, ay);
         })
     });
+    b.on_zoom_to_rect(|x, y, w, h| {
+        with_viewer(|viewer, ui| viewer.zoom_to_rect(ui, x, y, w, h))
+    });
     b.on_zoom_toggle(|ax, ay| {
         with_viewer(|viewer, ui| {
             if viewer.presenting.is_some() {

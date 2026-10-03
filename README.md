@@ -17,6 +17,7 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **Links** inside the PDF: web and mail addresses open in your browser, page links jump there. Alt+Left and Alt+Right go back and forward.
 - **Annotation tools**: highlight, underline or strike through selected text (five colors), draw freehand (five colors, three thicknesses) and erase. Changes live in memory and show as a dot on the tab; Save (Ctrl+S) writes them into the file itself and keeps the earlier version once as "name (backup).pdf"; Save a copy (Ctrl+Shift+S) writes a new PDF instead. Closing a tab with changes asks first.
 - **Read aloud** speaks the selected text or the current page with the Windows voice. **Translate** opens the selected text in a translation page in your browser, in the language Windows is set to.
+- **Zoom to area**: pick it in View options (or hold Ctrl and drag), then drag a rectangle on the page; the view zooms to fill the window with it.
 - **Side panel** with thumbnails and the document outline. Drag its edge to resize it.
 - **Page bookmarks** with a ribbon on the page and its thumbnail, a list on Home, and Ctrl+B.
 - **Password-protected files** ask for the password.
@@ -56,7 +57,7 @@ Ideas, not promises. The first group is what is known to be missing.
 - Drag tabs to reorder them, pin tabs, reopen a closed tab (Ctrl+Shift+T), and split view for two documents side by side.
 - Search across every open tab, and across recent files. The results should be saveable to a local file, so a user can keep them as a backup.
 - Names and notes for page bookmarks.
-- Zoom to a dragged rectangle, kinetic scrolling on touch, and auto-scroll.
+- Kinetic scrolling on touch, and auto-scroll.
 - A laser pointer and a blank screen in presentation mode.
 - Read aloud that follows the text and lets you pick the voice and speed.
 - OCR for scanned pages with the text recognition built into Windows, so they become searchable.

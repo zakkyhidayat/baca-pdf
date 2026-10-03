@@ -81,6 +81,7 @@ export component AppWindow inherits Window {
             if (event.text == Key.F11) { Bridge.toggle-fullscreen(); return accept; }
             if (event.text == Key.F1) { Bridge.shortcuts-open = true; return accept; }
             if (event.text == Key.Escape) {
+                if (Bridge.zoom-area) { Bridge.zoom-area = false; return accept; }
                 if (Bridge.presenting) { Bridge.toggle-presentation(); return accept; }
                 if (Bridge.find-open) { root.close-find(); return accept; }
                 if (Bridge.tool != 0) { Bridge.tool = 0; Bridge.tool-changed(); return accept; }

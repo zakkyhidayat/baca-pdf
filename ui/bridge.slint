@@ -284,6 +284,14 @@ export global Bridge {
     callback show-properties();
     callback toggle-presentation();
     callback print();
+    // Zoom to a rectangle dragged on the page: the mode is picked in View options or by dragging with Ctrl held.
+    in-out property <bool> zoom-area;
+    in-out property <bool> zr-on;
+    in-out property <length> zr-x;
+    in-out property <length> zr-y;
+    in-out property <length> zr-w;
+    in-out property <length> zr-h;
+    callback zoom-to-rect(length, length, length, length);
     callback save();
     callback save-copy();
 
