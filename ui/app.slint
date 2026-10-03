@@ -238,7 +238,7 @@ export component AppWindow inherits Window {
 
     find := FindFlyout {
         visible: Bridge.find-open && Bridge.state == DocState.ready && root.chrome;
-        x: max(8px, root.width - self.width - 8px);
+        x: max(8px, toolbar.find-right - self.width);
         y: toolbar.y + toolbar.height + 4px;
         close-find => { root.close-find(); }
     }

@@ -277,6 +277,8 @@ export component Toolbar inherits Rectangle {
     background: Theme.surface;
 
     property <length> b: Metrics.touch ? 40px : 32px;
+    // Right edge of the Search button, where the Find box lines up.
+    out property <length> find-right: right.x + root.b;
     // Left edge of the active drawing tool's button; its options hang from there.
     out property <length> ink-x: root.b + 21px + (Bridge.tool == 2 && root.shown >= 2 ? root.b + 4px : 0px);
     // Narrow windows drop the zoom list first; its choices move into View options.
