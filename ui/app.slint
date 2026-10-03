@@ -238,14 +238,14 @@ export component AppWindow inherits Window {
 
     find := FindFlyout {
         visible: Bridge.find-open && Bridge.state == DocState.ready && root.chrome;
-        x: max(8px, root.width - self.width - 12px);
+        x: max(8px, root.width - self.width - 8px);
         y: toolbar.y + toolbar.height + 4px;
         close-find => { root.close-find(); }
     }
 
     ink-options := InkOptions {
         visible: (Bridge.tool == 1 || Bridge.tool == 2) && Bridge.state == DocState.ready && root.chrome;
-        x: max(8px, toolbar.ink-x);
+        x: 8px;
         y: toolbar.y + toolbar.height + 4px;
     }
 

@@ -106,7 +106,7 @@ impl Viewer {
         fit.clamp(MIN_ZOOM * BASE_SCALE, MAX_ZOOM * BASE_SCALE)
     }
 
-    fn scale_of_page(&self, ui: &AppWindow, i: usize) -> f32 {
+    pub(crate) fn scale_of_page(&self, ui: &AppWindow, i: usize) -> f32 {
         if !matches!(self.zoom, Zoom::Fit) {
             return self.scale;
         }
@@ -551,6 +551,8 @@ impl Viewer {
             b.set_current_page(current as i32);
             self.sync_bookmark_state(ui);
         }
+        // Page Fit gives each page its own scale, so the percentage follows the page being read.
+        b.set_zoom_percent((self.scale_of_page(ui, current - 1) / BASE_SCALE * 100.0).round() as i32);
 
         // Visible pages first, nearest the middle of the viewport.
         let middle = sy + vh / 2.0;

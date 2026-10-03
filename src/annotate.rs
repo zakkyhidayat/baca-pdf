@@ -106,7 +106,7 @@ impl Viewer {
 
     pub(crate) fn stroke_begin(&mut self, ui: &AppWindow, x: f32, y: f32) {
         let Some(page) = self.page_near(x, y) else { return };
-        let width_px = DRAW_WIDTHS[(ui.global::<Bridge>().get_draw_width().max(0) as usize).min(2)] * self.scale;
+        let width_px = DRAW_WIDTHS[(ui.global::<Bridge>().get_draw_width().max(0) as usize).min(2)] * self.scale_of_page(ui, page);
         ui.global::<Bridge>().set_stroke_width(width_px.max(1.0));
         let stroke = Stroke { page, points: vec![[x, y]], width: width_px.max(1.0) };
         stroke.show(ui);
