@@ -281,16 +281,15 @@ export component Toolbar inherits Rectangle {
     out property <bool> narrow: root.width < 760px;
     // Below this width each group folds its less used buttons into its own "..." menu, like Edge.
     property <bool> compact: root.width < 1040px;
-    // How many of the eight left-hand tools fit beside the centered middle group. The rest wait in the
+    // How many of the seven left-hand tools fit beside the centered middle group. The rest wait in the
     // left "..." menu, the last one first. The widths are what the first n tools take, in order.
     property <float> k: root.b / 32px;
     property <length> room-all: root.center-ideal - 8px - 48px;
     property <length> room-part: root.room-all - 50px * root.k;
-    property <int> shown: root.room-all >= 366px * root.k ? 8
-        : root.room-part >= 330px * root.k ? 7
-        : root.room-part >= 281px * root.k ? 6
+    property <int> shown: root.room-all >= 330px * root.k ? 7
+        : root.room-part >= 294px * root.k ? 6
         : root.room-part >= 245px * root.k ? 5
-        : root.room-part >= 196px * root.k ? 4
+        : root.room-part >= 209px * root.k ? 4
         : root.room-part >= 160px * root.k ? 3
         : root.room-part >= 124px * root.k ? 2
         : root.room-part >= 62px * root.k ? 1 : 0;
@@ -450,19 +449,8 @@ export component Toolbar inherits Rectangle {
                 Bridge.tool-changed();
             }
         }
+        if root.shown >= 4: ToolbarSeparator { }
         if root.shown >= 4: IconButton {
-            // Text box
-            glyph: "\u{E8AC}";
-            label: "Add text: click where it should go";
-            toggle: true;
-            checked: Bridge.tool == 4;
-            clicked => {
-                Bridge.tool = Bridge.tool == 4 ? 0 : 4;
-                Bridge.tool-changed();
-            }
-        }
-        if root.shown >= 5: ToolbarSeparator { }
-        if root.shown >= 5: IconButton {
             // Read aloud
             glyph: "\u{E995}";
             label: Bridge.speaking ? "Stop reading aloud" : "Read aloud: the selected text, or this page";
@@ -470,27 +458,27 @@ export component Toolbar inherits Rectangle {
             checked: Bridge.speaking;
             clicked => { Bridge.read-aloud(); }
         }
-        if root.shown >= 6: IconButton {
+        if root.shown >= 5: IconButton {
             // Translate
             glyph: "\u{E164}";
             label: "Translate the selected text in your browser";
             clicked => { Bridge.translate(); }
         }
-        if root.shown >= 7: ToolbarSeparator { }
-        if root.shown >= 7: IconButton {
+        if root.shown >= 6: ToolbarSeparator { }
+        if root.shown >= 6: IconButton {
             // TVMonitor
             glyph: "\u{E7F4}";
             label: "Presentation mode (F5)";
             clicked => { Bridge.toggle-presentation(); }
         }
-        if root.shown >= 8: IconButton {
+        if root.shown >= 7: IconButton {
             // Info
             glyph: "\u{E946}";
             label: "Document properties (Alt+Enter)";
             clicked => { Bridge.show-properties(); }
         }
-        if root.shown < 8: ToolbarSeparator { }
-        if root.shown < 8: Rectangle {
+        if root.shown < 7: ToolbarSeparator { }
+        if root.shown < 7: Rectangle {
             width: root.b;
             IconButton {
                 // More
@@ -535,35 +523,25 @@ export component Toolbar inherits Rectangle {
                                 Bridge.tool-changed();
                             }
                         }
+                        if root.shown < 3: MenuRule { }
                         if root.shown < 4: MenuItem {
-                            glyph: "\u{E8AC}";
-                            label: "Add text";
-                            checkable: true;
-                            checked: Bridge.tool == 4;
-                            clicked => {
-                                Bridge.tool = Bridge.tool == 4 ? 0 : 4;
-                                Bridge.tool-changed();
-                            }
-                        }
-                        if root.shown < 4: MenuRule { }
-                        if root.shown < 5: MenuItem {
                             glyph: "\u{E995}";
                             label: Bridge.speaking ? "Stop reading aloud" : "Read aloud";
                             clicked => { Bridge.read-aloud(); }
                         }
-                        if root.shown < 6: MenuItem {
+                        if root.shown < 5: MenuItem {
                             glyph: "\u{E164}";
                             label: "Translate";
                             clicked => { Bridge.translate(); }
                         }
-                        if root.shown < 6: MenuRule { }
-                        if root.shown < 7: MenuItem {
+                        if root.shown < 5: MenuRule { }
+                        if root.shown < 6: MenuItem {
                             glyph: "\u{E7F4}";
                             label: "Presentation mode";
                             hint: "F5";
                             clicked => { Bridge.toggle-presentation(); }
                         }
-                        if root.shown < 8: MenuItem {
+                        if root.shown < 7: MenuItem {
                             glyph: "\u{E946}";
                             label: "Document properties";
                             hint: "Alt+Enter";
