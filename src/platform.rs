@@ -60,6 +60,13 @@ pub fn pick_pdf(start: Option<&std::path::Path>) -> Option<PathBuf> {
     }
 }
 
+/// A question with Yes and No, in the system's own message box.
+pub fn ask_yes_no(title: &str, text: &str) -> bool {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONQUESTION, MB_YESNO};
+    unsafe { MessageBoxW(Some(GetActiveWindow()), &HSTRING::from(text), &HSTRING::from(title), MB_YESNO | MB_ICONQUESTION) == IDYES }
+}
+
 /// Border and title bar thickness around a client area, at the system DPI.
 fn frame() -> (i32, i32, i32, i32) {
     let mut r = RECT::default();

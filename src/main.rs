@@ -102,6 +102,9 @@ struct Viewer {
     save_continue: Option<u64>,
     /// Tokens of saves that write into the file itself, not into a copy.
     in_place: std::collections::HashSet<u64>,
+    /// Documents changed since their recovery copy was written, and the saves that are recovery copies.
+    recovery_due: std::collections::HashSet<u64>,
+    recovery_tokens: std::collections::HashSet<u64>,
     token: u64,
     speaker: Option<platform::Speaker>,
     /// Tabs closed lately, newest last, as file and 1-based page, for Ctrl+Shift+T.
@@ -269,6 +272,8 @@ fn main() -> Result<(), slint::PlatformError> {
             confirm_tab: None,
             save_continue: None,
             in_place: Default::default(),
+            recovery_due: Default::default(),
+            recovery_tokens: Default::default(),
             token: 0,
             speaker: None,
             closed: Vec::new(),
@@ -685,6 +690,12 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         titlebar::install(on_caption_state);
     });
+    // A copy of what is not saved yet is kept aside, in case the program stops before it is saved.
+    let recovery = slint::Timer::default();
+    recovery.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(30), || {
+        with_viewer(|viewer, _| viewer.write_recoveries());
+    });
+    slint::Timer::single_shot(std::time::Duration::from_millis(1500), || with_viewer(|viewer, ui| viewer.offer_recovery(ui)));
     // Files changed on disk reload by themselves when that setting is on.
     let watcher = slint::Timer::default();
     watcher.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(1500), || {

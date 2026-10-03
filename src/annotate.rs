@@ -498,6 +498,7 @@ impl Viewer {
         }
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == doc) {
             tab.dirty = true;
+            self.recovery_due.insert(doc);
         }
         if self.doc.as_ref().map(|d| d.id) == Some(doc) {
             for p in &pages {
@@ -706,6 +707,8 @@ impl Viewer {
             1 => {
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
                     tab.dirty = false;
+                    store::clear_recovery(&tab.path);
+                    self.recovery_due.remove(&id);
                 }
                 self.sync_ui(ui);
                 self.continue_pending(ui);
@@ -723,8 +726,52 @@ impl Viewer {
         self.token
     }
 
+    /// Writes the recovery copy of every document that changed since the last one.
+    pub(crate) fn write_recoveries(&mut self) {
+        let due: Vec<u64> = self.recovery_due.drain().collect();
+        for id in due {
+            let Some(original) = self.tabs.iter().find(|t| t.id == id && t.dirty).map(|t| t.path.clone()) else { continue };
+            let Some(copy) = store::recovery_path(&original) else { continue };
+            let token = self.next_token();
+            self.recovery_tokens.insert(token);
+            self.renderer.edit(EditJob::Save { doc: id, path: copy, token });
+        }
+    }
+
+    /// At start: offers the changes that were open when the program last stopped without saving them.
+    pub(crate) fn offer_recovery(&mut self, ui: &AppWindow) {
+        let found = store::pending_recoveries();
+        if found.is_empty() {
+            return;
+        }
+        let names: Vec<String> = found.iter().map(|(original, _)| tabs::title_of(original)).collect();
+        let text = format!("The program stopped last time before these files were saved:\n\n{}\n\nRecover the changes? They are saved as a new file next to the original; the original is not touched.", names.join("\n"));
+        let recover = platform::ask_yes_no("Baca PDF", &text);
+        for (original, copy) in found {
+            if !recover {
+                store::clear_recovery(&original);
+                continue;
+            }
+            let stem = original.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
+            let target = original.with_file_name(format!("{stem} (recovered).pdf"));
+            match std::fs::copy(&copy, &target) {
+                Ok(_) => {
+                    store::clear_recovery(&original);
+                    self.open_path(ui, target);
+                }
+                Err(e) => store::log_error(&format!("Recovery could not be written next to {}: {e}", original.display())),
+            }
+        }
+    }
+
     /// A copy was written by the PDFium thread.
     pub(crate) fn on_saved(&mut self, ui: &AppWindow, doc: u64, path: PathBuf, token: u64, error: Option<String>, backup: Option<PathBuf>) {
+        if self.recovery_tokens.remove(&token) {
+            if let Some(message) = error {
+                store::log_error(&format!("Recovery copy failed: {message}"));
+            }
+            return;
+        }
         let in_place = self.in_place.remove(&token);
         let continuing = self.save_continue == Some(token);
         if continuing {
@@ -741,6 +788,8 @@ impl Viewer {
         }
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == doc && !matches!(t.status, Status::Failed(_))) {
             tab.dirty = false;
+            store::clear_recovery(&tab.path);
+            self.recovery_due.remove(&doc);
         }
         if in_place {
             let kept = backup.map(|b| format!(" The earlier version is kept as {}.", tabs::title_of(&b))).unwrap_or_default();

@@ -339,6 +339,59 @@ pub fn save_session(session: &Session) {
     write_lines("session.tsv", &lines);
 }
 
+fn recovery_dir() -> Option<PathBuf> {
+    let dir = data_dir()?.join("recovery");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+fn recovery_name(original: &Path) -> String {
+    // FNV-1a over the lower-cased path: the same file always lands on the same recovery copy.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in original.to_string_lossy().to_lowercase().bytes() {
+        hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Where the unsaved state of `original` is kept while it is open with changes.
+pub fn recovery_path(original: &Path) -> Option<PathBuf> {
+    let dir = recovery_dir()?;
+    let name = recovery_name(original);
+    let _ = fs::write(dir.join(format!("{name}.txt")), original.to_string_lossy().as_bytes());
+    Some(dir.join(format!("{name}.pdf")))
+}
+
+pub fn clear_recovery(original: &Path) {
+    let Some(dir) = recovery_dir() else { return };
+    let name = recovery_name(original);
+    let _ = fs::remove_file(dir.join(format!("{name}.pdf")));
+    let _ = fs::remove_file(dir.join(format!("{name}.txt")));
+}
+
+/// Files whose changes were never saved: the original path and the recovery copy.
+pub fn pending_recoveries() -> Vec<(PathBuf, PathBuf)> {
+    let Some(dir) = recovery_dir() else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let note = entry.path();
+        if note.extension().and_then(|e| e.to_str()) != Some("txt") {
+            continue;
+        }
+        let copy = note.with_extension("pdf");
+        let original = fs::read_to_string(&note).ok().map(PathBuf::from);
+        match original {
+            Some(original) if copy.is_file() => found.push((original, copy)),
+            _ => {
+                let _ = fs::remove_file(&note);
+                let _ = fs::remove_file(&copy);
+            }
+        }
+    }
+    found
+}
+
 /// Appends one line to error.log in the settings folder.
 pub fn log_error(message: &str) {
     use std::io::Write;
