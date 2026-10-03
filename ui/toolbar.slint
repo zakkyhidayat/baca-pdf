@@ -334,33 +334,6 @@ export component Toolbar inherits Rectangle {
                 Bridge.tool-changed();
             }
         }
-        if root.shown >= 1: Rectangle {
-            width: 18px;
-            ChevronButton {
-                label: "Highlight color";
-                clicked => { highlight-menu.show(); }
-            }
-            highlight-menu := PopupWindow {
-                x: 0;
-                y: parent.height + 4px;
-                width: 5 * 34px + 12px;
-                Flyout {
-                    HorizontalLayout {
-                        padding: 6px;
-                        for color[i] in Bridge.highlight-colors: Swatch {
-                            swatch: color;
-                            name: Bridge.highlight-names[i];
-                            chosen: Bridge.highlight-color == i;
-                            clicked => {
-                                Bridge.highlight-color = i;
-                                Bridge.tool = 1;
-                                Bridge.tool-changed();
-                            }
-                        }
-                    }
-                }
-            }
-        }
         if root.shown >= 2: IconButton {
             // Draw
             glyph: "\u{ED63}";
@@ -372,10 +345,10 @@ export component Toolbar inherits Rectangle {
                 Bridge.tool-changed();
             }
         }
-        if root.shown >= 2: Rectangle {
+        if root.shown >= 1: Rectangle {
             width: 18px;
             ChevronButton {
-                label: "Drawing color and thickness";
+                label: "Highlight and draw options";
                 clicked => { draw-menu.show(); }
             }
             draw-menu := PopupWindow {
@@ -385,6 +358,29 @@ export component Toolbar inherits Rectangle {
                 Flyout {
                     VerticalLayout {
                         padding: 6px;
+                        Text {
+                            text: "Highlight";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                        }
+                        HorizontalLayout {
+                            for color[i] in Bridge.highlight-colors: Swatch {
+                                swatch: color;
+                                name: Bridge.highlight-names[i];
+                                chosen: Bridge.highlight-color == i;
+                                clicked => {
+                                    Bridge.highlight-color = i;
+                                    Bridge.tool = 1;
+                                    Bridge.tool-changed();
+                                }
+                            }
+                        }
+                        MenuRule { }
+                        Text {
+                            text: "Draw";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                        }
                         HorizontalLayout {
                             for color[i] in Bridge.draw-colors: Swatch {
                                 swatch: color;
