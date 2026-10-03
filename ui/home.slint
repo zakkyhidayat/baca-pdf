@@ -265,6 +265,7 @@ export component Home inherits Rectangle {
     property <length> menu-y;
     property <[string]> theme-glyphs: ["\u{E793}", "\u{E706}", "\u{E708}"];
     property <[string]> theme-names: ["follows Windows", "light", "dark"];
+    property <[string]> print-names: ["Fit to the paper", "Actual size"];
     property <[string]> zoom-names: ["Automatic", "Fit the page", "Fit the width", "Actual size"];
 
     flick := Flickable {
@@ -393,6 +394,36 @@ export component Home inherits Rectangle {
                                             checkable: true;
                                             checked: Bridge.default-zoom == i;
                                             clicked => { Bridge.set-default-zoom(i); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: Metrics.button;
+                            height: Metrics.button;
+                            IconButton {
+                                // Print
+                                glyph: "\u{E749}";
+                                glyph-color: Theme.text-secondary;
+                                label: "Print size: " + root.print-names[Bridge.print-scale];
+                                clicked => { print-menu.show(); }
+                            }
+                            print-menu := PopupWindow {
+                                x: 0;
+                                y: parent.height + 4px;
+                                width: 200px;
+                                Flyout {
+                                    VerticalLayout {
+                                        padding: 4px;
+                                        for name[i] in root.print-names: MenuItem {
+                                            label: name;
+                                            checkable: true;
+                                            checked: Bridge.print-scale == i;
+                                            clicked => { Bridge.set-print-scale(i); }
                                         }
                                     }
                                 }

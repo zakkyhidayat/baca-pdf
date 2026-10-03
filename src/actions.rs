@@ -176,7 +176,7 @@ impl Viewer {
         let Some((hdc, pages)) = platform::print_dialog(count, current) else { return };
         let title = self.active.map(|a| self.tabs[a].title.clone()).unwrap_or_default();
         self.notify(ui, &format!("Printing {} page{}", pages.len(), if pages.len() == 1 { "" } else { "s" }));
-        self.renderer.print(PrintJob { doc: id, hdc, pages, title });
+        self.renderer.print(PrintJob { doc: id, hdc, pages, title, actual_size: self.settings.print_scale == 1 });
     }
 
     pub(crate) fn on_printed(&mut self, ui: &AppWindow, pages: usize, message: Option<String>) {

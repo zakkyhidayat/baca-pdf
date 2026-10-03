@@ -408,6 +408,13 @@ fn main() -> Result<(), slint::PlatformError> {
             viewer.sync_home(ui);
         })
     });
+    b.on_set_print_scale(|i| {
+        with_viewer(|viewer, ui| {
+            viewer.settings.print_scale = i.clamp(0, 1);
+            store::save_settings(&viewer.settings);
+            viewer.sync_home(ui);
+        })
+    });
     b.on_open_url(|url| platform::shell_open(&url));
     b.on_open_error_log(|| match store::error_log_path() {
         Some(path) => platform::shell_open(&path.display().to_string()),

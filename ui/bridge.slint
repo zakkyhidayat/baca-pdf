@@ -188,6 +188,7 @@ export global Bridge {
     in property <bool> auto-reload: true;
     // 0 automatic, 1 page fit, 2 page width, 3 actual size.
     in property <int> default-zoom;
+    in property <int> print-scale;
     in property <string> version;
 
     // Window
@@ -240,6 +241,7 @@ export global Bridge {
     callback toggle-restore();
     callback toggle-reload();
     callback set-default-zoom(int);
+    callback set-print-scale(int);
     callback open-url(string);
     callback open-error-log();
 

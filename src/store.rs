@@ -117,6 +117,8 @@ pub struct Settings {
     pub tone: i32,
     pub scroll_mode: i32,
     pub spread_mode: i32,
+    /// 0 fits each page to the paper, 1 prints at actual size.
+    pub print_scale: i32,
 }
 
 impl Default for Settings {
@@ -130,6 +132,7 @@ impl Default for Settings {
             tone: 0,
             scroll_mode: 0,
             spread_mode: 0,
+            print_scale: 0,
         }
     }
 }
@@ -184,6 +187,7 @@ pub fn load_settings() -> Settings {
             "tone" => s.tone = value.parse().unwrap_or(0).clamp(0, 2),
             "scroll_mode" => s.scroll_mode = value.parse().unwrap_or(0).clamp(0, 3),
             "spread_mode" => s.spread_mode = value.parse().unwrap_or(0).clamp(0, 2),
+            "print_scale" => s.print_scale = value.parse().unwrap_or(0).clamp(0, 1),
             _ => {}
         }
     }
@@ -203,6 +207,7 @@ pub fn save_settings(s: &Settings) {
             format!("tone\t{}", s.tone),
             format!("scroll_mode\t{}", s.scroll_mode),
             format!("spread_mode\t{}", s.spread_mode),
+            format!("print_scale\t{}", s.print_scale),
         ],
     );
 }

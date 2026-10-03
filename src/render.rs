@@ -70,6 +70,8 @@ pub struct PrintJob {
     pub hdc: isize,
     pub pages: Vec<usize>,
     pub title: String,
+    /// Print at the size the page declares instead of fitting it to the paper.
+    pub actual_size: bool,
 }
 
 /// What the find bar asks for besides the words.
@@ -1366,7 +1368,7 @@ fn print(document: &PdfDocument, job: &PrintJob) -> Result<usize, String> {
     use windows::core::PCWSTR;
     use windows::Win32::Graphics::Gdi::{
         DeleteDC, GetDeviceCaps, SetStretchBltMode, StretchDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DIB_RGB_COLORS, HALFTONE, HDC, HORZRES, SRCCOPY, VERTRES,
+        DIB_RGB_COLORS, HALFTONE, HDC, HORZRES, LOGPIXELSX, SRCCOPY, VERTRES,
     };
     use windows::Win32::Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
 
@@ -1387,7 +1389,11 @@ fn print(document: &PdfDocument, job: &PrintJob) -> Result<usize, String> {
             // A landscape page on portrait paper, or the other way round, is turned to fill it.
             let turn = (w > h) != (paper_w > paper_h);
             let (dw, dh) = if turn { (h, w) } else { (w, h) };
-            let fit = (paper_w / dw).min(paper_h / dh);
+            let fit = if job.actual_size {
+                GetDeviceCaps(Some(hdc), LOGPIXELSX) as f32 / 72.0
+            } else {
+                (paper_w / dw).min(paper_h / dh)
+            };
             let (out_w, out_h) = (dw * fit, dh * fit);
             let k = (PRINT_PIXELS / (out_w * out_h)).sqrt().min(1.0);
             let (bw, bh) = ((out_w * k).round().max(1.0) as i32, (out_h * k).round().max(1.0) as i32);
