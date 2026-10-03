@@ -224,6 +224,21 @@ impl Viewer {
         }
     }
 
+    /// A copy with the annotations drawn into the pages. The open document stays editable.
+    pub(crate) fn save_flat_copy(&mut self, ui: &AppWindow) {
+        let Some(path) = self.active_path() else { return };
+        let Some(doc) = self.active_id() else { return };
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
+        let Some(target) = platform::pick_save_path(&format!("{stem} (flattened).pdf")) else { return };
+        if store::same_file(&target, &path) {
+            self.notify(ui, "Choose a different name: a copy cannot replace the file itself.");
+            return;
+        }
+        let token = self.next_token();
+        self.flat_tokens.insert(token);
+        self.renderer.edit(render::EditJob::SaveFlat { doc, path: target, token });
+    }
+
     pub(crate) fn bookmarks_for(&self, path: &std::path::Path) -> Vec<usize> {
         self.bookmarks.iter().find(|(p, _)| store::same_file(p, path)).map(|(_, pages)| pages.clone()).unwrap_or_default()
     }

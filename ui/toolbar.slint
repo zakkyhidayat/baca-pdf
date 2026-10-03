@@ -820,6 +820,11 @@ export component Toolbar inherits Rectangle {
                             hint: "Ctrl+Shift+S";
                             clicked => { Bridge.save-copy(); }
                         }
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save a flattened copy";
+                            clicked => { Bridge.save-flat-copy(); }
+                        }
                     }
                 }
             }
@@ -856,6 +861,11 @@ export component Toolbar inherits Rectangle {
                             label: "Save a copy";
                             hint: "Ctrl+Shift+S";
                             clicked => { Bridge.save-copy(); }
+                        }
+                        MenuItem {
+                            glyph: "\u{E78C}";
+                            label: "Save a flattened copy";
+                            clicked => { Bridge.save-flat-copy(); }
                         }
                     }
                 }

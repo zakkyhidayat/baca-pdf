@@ -772,6 +772,16 @@ impl Viewer {
             }
             return;
         }
+        if self.flat_tokens.remove(&token) {
+            match error {
+                Some(message) => {
+                    store::log_error(&format!("Flattened copy failed: {message}"));
+                    self.notify(ui, &format!("The flattened copy could not be saved: {message}"));
+                }
+                None => self.notify(ui, &format!("Saved a flattened copy as {}", tabs::title_of(&path))),
+            }
+            return;
+        }
         let in_place = self.in_place.remove(&token);
         let continuing = self.save_continue == Some(token);
         if continuing {

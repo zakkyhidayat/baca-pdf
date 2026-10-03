@@ -105,6 +105,7 @@ struct Viewer {
     /// Documents changed since their recovery copy was written, and the saves that are recovery copies.
     recovery_due: std::collections::HashSet<u64>,
     recovery_tokens: std::collections::HashSet<u64>,
+    flat_tokens: std::collections::HashSet<u64>,
     token: u64,
     speaker: Option<platform::Speaker>,
     /// Tabs closed lately, newest last, as file and 1-based page, for Ctrl+Shift+T.
@@ -274,6 +275,7 @@ fn main() -> Result<(), slint::PlatformError> {
             in_place: Default::default(),
             recovery_due: Default::default(),
             recovery_tokens: Default::default(),
+            flat_tokens: Default::default(),
             token: 0,
             speaker: None,
             closed: Vec::new(),
@@ -636,6 +638,7 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_print(|| with_viewer(|viewer, ui| viewer.print(ui)));
     b.on_save(|| with_viewer(|viewer, ui| viewer.save_original(ui)));
     b.on_save_copy(|| with_viewer(|viewer, ui| viewer.save_copy(ui)));
+    b.on_save_flat_copy(|| with_viewer(|viewer, ui| viewer.save_flat_copy(ui)));
 
     // The window
     b.on_toggle_fullscreen(|| {

@@ -123,6 +123,8 @@ pub enum EditJob {
     Save { doc: u64, path: PathBuf, token: u64 },
     /// Writes the changes into the open file itself, keeping the version before the first save beside it.
     SaveOriginal { doc: u64, path: PathBuf, token: u64 },
+    /// A copy with every annotation and form field drawn into the page itself.
+    SaveFlat { doc: u64, path: PathBuf, token: u64 },
     ListAnnotations { doc: u64 },
     SetNote { doc: u64, page: usize, index: usize, text: String },
     SetBounds { doc: u64, page: usize, index: usize, rect: [f32; 4] },
@@ -143,6 +145,7 @@ impl EditJob {
             | EditJob::PageText { doc, .. }
             | EditJob::Save { doc, .. }
             | EditJob::SaveOriginal { doc, .. }
+            | EditJob::SaveFlat { doc, .. }
             | EditJob::ListAnnotations { doc }
             | EditJob::SetNote { doc, .. }
             | EditJob::SetBounds { doc, .. }
@@ -449,6 +452,15 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     deliver(Event::Saved { doc, path: path.clone(), token: *token, error, backup });
                     continue;
                 }
+                if let EditJob::SaveFlat { path, token, .. } = &job {
+                    let error = match (&pdfium, documents.get(&doc)) {
+                        (Ok(p), Some(document)) => save_flat(p, document, passwords.get(&doc).and_then(|p| p.as_deref()), path).err(),
+                        (Err(message), _) => Some(message.clone()),
+                        _ => Some("The document is not open.".to_string()),
+                    };
+                    deliver(Event::Saved { doc, path: path.clone(), token: *token, error, backup: None });
+                    continue;
+                }
                 let Some(document) = documents.get_mut(&doc) else { continue };
                 let ledger = added_text.entry(doc).or_default();
                 // What can be undone goes through the history.
@@ -500,7 +512,7 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                         let error = document.save_to_file(&path).err().map(|e| describe(&e));
                         deliver(Event::Saved { doc, path, token, error, backup: None });
                     }
-                    EditJob::SaveOriginal { .. } => {}
+                    EditJob::SaveOriginal { .. } | EditJob::SaveFlat { .. } => {}
                     EditJob::Note { page, turns, point, text, .. } => {
                         let (pages, message) = split(edit_note(document, page, turns, point, &text).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
@@ -956,6 +968,17 @@ macro_rules! stamp {
         let _ = $annotation.set_creation_date(now);
         let _ = $annotation.set_modification_date(now);
     }};
+}
+
+/// Writes a copy in which annotations and form fields are part of the page, so every viewer shows
+/// them the same way and they can no longer be edited. The open document is not touched.
+fn save_flat(pdfium: &Pdfium, document: &PdfDocument, password: Option<&str>, path: &std::path::Path) -> Result<(), String> {
+    let bytes = document.save_to_bytes().map_err(|e| describe(&e))?;
+    let copy = pdfium.load_pdf_from_byte_vec(bytes, password).map_err(|e| describe(&e))?;
+    for mut page in copy.pages().iter() {
+        page.flatten().map_err(|e| describe(&e))?;
+    }
+    copy.save_to_file(path).map_err(|e| describe(&e))
 }
 
 fn list_annotations(document: &PdfDocument, history: &mut crate::undo::History) -> Vec<AnnotRow> {
