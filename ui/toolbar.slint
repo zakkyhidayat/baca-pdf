@@ -43,13 +43,65 @@ component ChevronButton {
     }
 }
 
+// One button for a tool and its choices: the icon and a small arrow share a single hover area.
+component MenuButton {
+    in property <string> glyph;
+    in property <string> label;
+    callback clicked;
+
+    width: 48px;
+    height: Metrics.touch ? 40px : 32px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Glyph {
+        x: 6px;
+        width: 24px;
+        text: root.glyph;
+        font-size: 16px;
+        color: Theme.text;
+    }
+    Glyph {
+        x: 32px;
+        width: 12px;
+        // ChevronDown
+        text: "\u{E70D}";
+        font-size: 9px;
+        color: Theme.text-secondary;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return || event.text == Key.DownArrow) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
 // A colour in the highlight and draw choices.
 component Swatch {
     in property <color> swatch;
     in property <string> name;
     in property <bool> chosen;
+    // Off, the swatch is greyed out and ignores clicks.
+    in property <bool> enabled: true;
     callback clicked;
 
+    opacity: root.enabled ? 1.0 : 0.35;
     width: 34px;
     height: 34px;
     accessible-role: button;
@@ -80,9 +132,11 @@ component Swatch {
         border-color: root.chosen ? Theme.accent : Theme.divider;
     }
     area := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        enabled: root.enabled;
         focus-on-click: false;
         key-pressed(event) => {
             if (event.text == " " || event.text == Key.Return) {
@@ -762,16 +816,11 @@ export component Toolbar inherits Rectangle {
             label: "Print (Ctrl+P)";
             clicked => { Bridge.print(); }
         }
-        if !root.compact: IconButton {
-            // Save
-            glyph: "\u{E78C}";
-            label: "Save (Ctrl+S)";
-            clicked => { Bridge.save(); }
-        }
         if !root.compact: Rectangle {
-            width: 18px;
-            ChevronButton {
-                label: "Save options";
+            width: 48px;
+            MenuButton {
+                glyph: "\u{E78C}";
+                label: "Save (Ctrl+S)";
                 clicked => { save-menu.show(); }
             }
             save-menu := PopupWindow {
@@ -944,6 +993,7 @@ export component InkOptions inherits Rectangle {
                     swatch: color;
                     name: Bridge.highlight-names[i];
                     chosen: Bridge.highlight-color == i;
+                    enabled: Bridge.mark-style == 0;
                     clicked => { Bridge.highlight-color = i; }
                 }
             }

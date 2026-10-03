@@ -99,8 +99,10 @@ impl Viewer {
     pub(crate) fn annotate_selection(&mut self, ui: &AppWindow) {
         let Some(doc) = self.active_id() else { return };
         let Some(sel) = self.selection.as_ref().filter(|s| !s.pieces.is_empty()) else { return };
-        let color = HIGHLIGHT_COLORS[(ui.global::<Bridge>().get_highlight_color().max(0) as usize).min(4)];
-        self.renderer.edit(EditJob::Highlight { doc, pieces: sel.pieces.clone(), turns: self.turns, color, style: ui.global::<Bridge>().get_mark_style().clamp(0, 2) as u8 });
+        let style = ui.global::<Bridge>().get_mark_style().clamp(0, 2) as u8;
+        // Underlines and strikethroughs are plain black lines; only highlights take a color.
+        let color = if style == 0 { HIGHLIGHT_COLORS[(ui.global::<Bridge>().get_highlight_color().max(0) as usize).min(4)] } else { [0, 0, 0] };
+        self.renderer.edit(EditJob::Highlight { doc, pieces: sel.pieces.clone(), turns: self.turns, color, style });
         self.clear_selection(ui);
     }
 
