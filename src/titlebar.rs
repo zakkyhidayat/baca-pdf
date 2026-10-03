@@ -10,11 +10,13 @@ use windows::core::BOOL;
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::Graphics::Gdi::ScreenToClient;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumThreadWindows, GetWindowLongW, IsIconic, SetForegroundWindow, SetPropW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
+    EnumThreadWindows, GetSystemMetrics, GetWindowLongW, LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON,
+    LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON, IsIconic, SetForegroundWindow, SetPropW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
     ShowWindow, GWL_STYLE, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTMAXBUTTON, HTTOP, NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER,
     SM_CYFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE,
     WM_COPYDATA, WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
@@ -74,11 +76,27 @@ pub fn install(on_state: fn(bool, bool, bool)) -> bool {
         WINDOW = h;
         // Lets a second launch find this window and hand its files over.
         let _ = SetPropW(h, crate::single::PROP, Some(HANDLE(1 as *mut _)));
+        set_icons(h);
         // Makes Windows ask WM_NCCALCSIZE again, now answered by `subclass`.
         let _ = SetWindowPos(h, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
     }
     report();
     true
+}
+
+/// Gives the window the icon embedded in the exe; Alt+Tab and the taskbar read it from the window.
+unsafe fn set_icons(h: HWND) {
+    unsafe {
+        let Ok(module) = GetModuleHandleW(None) else { return };
+        for (kind, w, hh) in [
+            (ICON_BIG, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON)),
+            (ICON_SMALL, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON)),
+        ] {
+            if let Ok(icon) = LoadImageW(Some(module.into()), windows::core::PCWSTR(1 as *const u16), IMAGE_ICON, w, hh, LR_DEFAULTCOLOR) {
+                SendMessageW(h, WM_SETICON, Some(WPARAM(kind as usize)), Some(LPARAM(HICON(icon.0).0 as isize)));
+            }
+        }
+    }
 }
 
 static mut OPEN_CALLBACK: Option<fn(Vec<std::path::PathBuf>)> = None;
