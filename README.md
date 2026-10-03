@@ -15,7 +15,7 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **Find** (Ctrl+F): a bar under the toolbar with the match count, previous, next and close. Every match is highlighted, and accented letters match their plain forms.
 - **Select and copy** text across pages, with Ctrl+C or the Copy bar. Ctrl+A selects the current page.
 - **Links** inside the PDF: web and mail addresses open in your browser, page links jump there. Alt+Left and Alt+Right go back and forward.
-- **Annotation tools**: highlight selected text (five colors), draw freehand (five colors, three thicknesses) and erase. The arrow beside Draw opens one box with the options of both tools. Changes live in memory and show as a dot on the tab; Save a copy writes them into a new PDF, and closing a tab with changes asks first. The original file is never changed.
+- **Annotation tools**: highlight selected text (five colors), draw freehand (five colors, three thicknesses) and erase. Changes live in memory and show as a dot on the tab; Save a copy writes them into a new PDF, and closing a tab with changes asks first. The original file is never changed.
 - **Read aloud** speaks the selected text or the current page with the Windows voice. **Translate** opens the selected text in a translation page in your browser, in the language Windows is set to.
 - **Side panel** with thumbnails and the document outline. Drag its edge to resize it.
 - **Page bookmarks** with a ribbon on the page and its thumbnail, a list on Home, and Ctrl+B.
@@ -33,6 +33,7 @@ Ideas, not promises. The first group is what is known to be missing.
 
 **Missing now**
 - **Add text** is built but hidden from the toolbar until its options are settled (see "Add text, next steps"). Today it places one line of 12 pt Helvetica in the draw color.
+- **One options box for the drawing tools.** Highlight and Draw each have their own small popup (colors for one, colors and thickness for the other). They should share a single box with a section per tool, so all the options sit in one place.
 - Form filling, stamps and comments.
 - **Add image**: place a picture on a page, such as a premade handwritten signature saved as a PNG. Pick the file, click where it goes, then move and resize it. Transparent PNGs should keep their transparency.
 - **Sign**: type a name and get it as a cursive signature, with a choice of a few script fonts and ink colors, placed and resized like an image. Drawing a signature and keeping it for later would sit beside it.
