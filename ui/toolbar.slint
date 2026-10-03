@@ -277,6 +277,8 @@ export component Toolbar inherits Rectangle {
     background: Theme.surface;
 
     property <length> b: Metrics.touch ? 40px : 32px;
+    // Where the options of the active drawing tool hang: centered under its button.
+    out property <length> ink-x: root.b + 21px + (Bridge.tool == 2 && root.shown >= 2 ? root.b + 4px : 0px) + root.b / 2 - (5 * 34px + 12px) / 2;
     // Narrow windows drop the zoom list first; its choices move into View options.
     out property <bool> narrow: root.width < 760px;
     // Below this width each group folds its less used buttons into its own "..." menu, like Edge.
@@ -395,7 +397,7 @@ export component Toolbar inherits Rectangle {
             }
             left-more := PopupWindow {
                 x: 0;
-                y: parent.height + 4px;
+                y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                 width: 300px;
                 Flyout {
                     VerticalLayout {
@@ -532,7 +534,7 @@ export component Toolbar inherits Rectangle {
                 }
                 zoom-menu := PopupWindow {
                     x: 0;
-                    y: parent.height + 4px;
+                    y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                     width: 200px;
                     Flyout {
                         VerticalLayout {
@@ -564,7 +566,7 @@ export component Toolbar inherits Rectangle {
             }
             view-menu := PopupWindow {
                 x: parent.width - self.width;
-                y: parent.height + 4px;
+                y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                 width: 288px;
                 Flyout {
                     VerticalLayout {
@@ -774,7 +776,7 @@ export component Toolbar inherits Rectangle {
             }
             right-more := PopupWindow {
                 x: parent.width - self.width;
-                y: parent.height + 4px;
+                y: root.absolute-position.y + root.height + 4px - parent.absolute-position.y;
                 width: 280px;
                 Flyout {
                     VerticalLayout {
