@@ -339,6 +339,7 @@ export component Toolbar inherits Rectangle {
                 clicked => {
                     Bridge.tool = Bridge.tool == 1 ? 0 : 1;
                     Bridge.tool-changed();
+                if (Bridge.tool == 1) { highlight-menu.show(); }
                 }
             }
             Rectangle {
@@ -386,6 +387,7 @@ export component Toolbar inherits Rectangle {
                 clicked => {
                     Bridge.tool = Bridge.tool == 2 ? 0 : 2;
                     Bridge.tool-changed();
+                if (Bridge.tool == 2) { draw-menu.show(); }
                 }
             }
             Rectangle {
