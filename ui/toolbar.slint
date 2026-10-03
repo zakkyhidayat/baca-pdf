@@ -304,6 +304,7 @@ export component Toolbar inherits Rectangle {
     // left "..." menu, the last one first. The widths are what the first n tools take, in order.
     // Translate is hidden until its design is settled (see the to-do).
     property <bool> translate-on: false;
+    property <bool> read-aloud-on: false;
     property <float> k: root.b / 32px;
     property <length> room-all: root.center-ideal - 8px - 48px;
     property <length> room-part: root.room-all - 50px * root.k;
@@ -377,8 +378,8 @@ export component Toolbar inherits Rectangle {
                 Bridge.tool-changed();
             }
         }
-        if root.shown >= 4: ToolbarSeparator { }
-        if root.shown >= 4: IconButton {
+        if root.read-aloud-on && root.shown >= 4: ToolbarSeparator { }
+        if root.read-aloud-on && root.shown >= 4: IconButton {
             // Read aloud
             glyph: "\u{E995}";
             label: Bridge.speaking ? "Stop reading aloud" : "Read aloud: the selected text, or this page";
@@ -452,7 +453,7 @@ export component Toolbar inherits Rectangle {
                             }
                         }
                         if root.shown < 3: MenuRule { }
-                        if root.shown < 4: MenuItem {
+                        if root.read-aloud-on && root.shown < 4: MenuItem {
                             glyph: "\u{E995}";
                             label: Bridge.speaking ? "Stop reading aloud" : "Read aloud";
                             clicked => { Bridge.read-aloud(); }
