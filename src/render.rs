@@ -1033,6 +1033,8 @@ macro_rules! stamp {
         }
         let _ = $annotation.set_creation_date(now);
         let _ = $annotation.set_modification_date(now);
+        // Without the Print flag other viewers leave the annotation out when printing.
+        let _ = $annotation.set_is_printed(true);
     }};
 }
 
@@ -1042,6 +1044,16 @@ fn save_flat(pdfium: &Pdfium, document: &PdfDocument, password: Option<&str>, pa
     let bytes = document.save_to_bytes().map_err(|e| describe(&e))?;
     let copy = pdfium.load_pdf_from_byte_vec(bytes, password).map_err(|e| describe(&e))?;
     for mut page in copy.pages().iter() {
+        // PDFium flattens what is meant to print, and gives an annotation its appearance when the page is drawn.
+        {
+            let annotations = page.annotations_mut();
+            for i in 0..annotations.len() {
+                if let Ok(mut annotation) = annotations.get(i) {
+                    let _ = annotation.set_is_printed(true);
+                }
+            }
+        }
+        let _ = page.render_with_config(&PdfRenderConfig::new().set_target_width(64));
         page.flatten().map_err(|e| describe(&e))?;
     }
     copy.save_to_file(path).map_err(|e| describe(&e))
