@@ -50,6 +50,7 @@ export struct TabInfo {
     busy: bool,
     failed: bool,
     favorite: bool,
+    pinned: bool,
 }
 
 export struct RecentItem {
@@ -219,6 +220,9 @@ export global Bridge {
     callback close-active-tab();
     callback cycle-tab(int);
     callback tab-favorite(int);
+    callback tab-pin(int);
+    // How many tabs at the left are pinned.
+    in-out property <int> pinned-count;
     callback tab-copy-path(int);
     callback tab-show-in-folder(int);
     callback open-recent(int);

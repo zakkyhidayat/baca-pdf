@@ -311,6 +311,7 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_move_tab_by(|step| with_viewer(|viewer, ui| viewer.move_active_tab(ui, step)));
     b.on_reopen_closed_tab(|| with_viewer(|viewer, ui| viewer.reopen_closed_tab(ui)));
     b.on_cycle_tab(|step| with_viewer(|viewer, ui| viewer.cycle_tab(ui, step)));
+    b.on_tab_pin(|i| with_viewer(|viewer, ui| viewer.toggle_pin(ui, i.max(0) as usize)));
     b.on_tab_favorite(|i| {
         with_viewer(|viewer, ui| {
             if let Some(path) = usize::try_from(i).ok().and_then(|i| viewer.tab_path(i)) {

@@ -36,6 +36,8 @@ pub(crate) struct Tab {
     pub password_wrong: bool,
     /// Drawn on or edited since it was opened, and not yet saved as a copy.
     pub dirty: bool,
+    /// Pinned tabs sit first and show only their icon.
+    pub pinned: bool,
 }
 
 pub(crate) fn title_of(path: &Path) -> String {
@@ -50,7 +52,7 @@ impl Viewer {
     fn new_tab(&mut self, path: PathBuf, zoom: Zoom, spot: Spot, turns: u8) -> usize {
         self.next_id += 1;
         let title = title_of(&path);
-        self.tabs.push(Tab { id: self.next_id, path, title, status: Status::Unloaded, doc: None, zoom, spot, turns, stamp: None, locked: false, password_wrong: false, dirty: false });
+        self.tabs.push(Tab { id: self.next_id, path, title, status: Status::Unloaded, doc: None, zoom, spot, turns, stamp: None, locked: false, password_wrong: false, dirty: false, pinned: false });
         self.tabs.len() - 1
     }
 
@@ -175,12 +177,33 @@ impl Viewer {
 
     /// Moves a tab to another place in the strip, keeping the same tab in front.
     pub(crate) fn move_tab(&mut self, ui: &AppWindow, from: usize, to: usize) {
-        if from >= self.tabs.len() || to >= self.tabs.len() || from == to {
+        if from >= self.tabs.len() || to >= self.tabs.len() {
+            return;
+        }
+        // Pinned tabs stay among themselves, and the others among theirs.
+        let pinned = self.tabs.iter().filter(|t| t.pinned).count();
+        let to = if self.tabs[from].pinned { to.min(pinned.saturating_sub(1)) } else { to.max(pinned) };
+        if from == to {
             return;
         }
         let front = self.active.map(|a| self.tabs[a].id);
         let tab = self.tabs.remove(from);
         self.tabs.insert(to, tab);
+        self.active = front.and_then(|id| self.tabs.iter().position(|t| t.id == id));
+        self.sync_ui(ui);
+        self.save_session(ui);
+    }
+
+    /// Pins the tab (it moves behind the other pinned ones) or unpins it (it moves in front of the rest).
+    pub(crate) fn toggle_pin(&mut self, ui: &AppWindow, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        let front = self.active.map(|a| self.tabs[a].id);
+        let mut tab = self.tabs.remove(index);
+        tab.pinned = !tab.pinned;
+        let pinned = self.tabs.iter().filter(|t| t.pinned).count();
+        self.tabs.insert(pinned, tab);
         self.active = front.and_then(|id| self.tabs.iter().position(|t| t.id == id));
         self.sync_ui(ui);
         self.save_session(ui);
@@ -288,10 +311,12 @@ impl Viewer {
                 busy: matches!(t.status, Status::Loading),
                 failed: matches!(t.status, Status::Failed(_)),
                 favorite: self.is_favorite(&t.path),
+                pinned: t.pinned,
             })
             .collect();
         self.tab_model.set_vec(infos);
         let b = ui.global::<Bridge>();
+        b.set_pinned_count(self.tabs.iter().filter(|t| t.pinned).count() as i32);
         b.set_active_tab(self.active.map(|a| a as i32).unwrap_or(-1));
 
         match self.active.map(|a| &self.tabs[a]) {
@@ -443,6 +468,7 @@ impl Viewer {
                     spot: if live { self.current_spot(ui).unwrap_or(t.spot) } else { t.spot },
                     zoom: if live { self.zoom } else { t.zoom },
                     turns: if live { self.turns } else { t.turns },
+                    pinned: t.pinned,
                 }
             })
             .collect();
@@ -478,7 +504,8 @@ impl Viewer {
 
     pub(crate) fn restore(&mut self, ui: &AppWindow, session: Session) {
         for t in session.tabs {
-            self.new_tab(t.path, t.zoom, t.spot, t.turns);
+            let i = self.new_tab(t.path, t.zoom, t.spot, t.turns);
+            self.tabs[i].pinned = t.pinned;
         }
         self.sync_ui(ui);
         if let Some(a) = session.active {

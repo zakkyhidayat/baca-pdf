@@ -126,7 +126,7 @@ component TabItem {
                 self.began = false;
                 root.drag-ended();
             }
-            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle && !root.info.pinned) {
                 root.close();
             }
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
@@ -134,7 +134,24 @@ component TabItem {
             }
         }
     }
-    HorizontalLayout {
+    // A pinned tab is only its icon, in the middle.
+    if root.info.pinned && root.info.busy: Spinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        indeterminate: true;
+    }
+    if root.info.pinned && !root.info.busy: Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        source: Bridge.file-icon;
+        opacity: root.info.failed ? 0.4 : 1;
+        accessible-role: none;
+    }
+    if !root.info.pinned: HorizontalLayout {
         padding-left: 12px;
         padding-right: 4px;
         spacing: 4px;
@@ -232,9 +249,15 @@ export component TitleBar inherits Rectangle {
     property <length> drag-min: 32px;
     property <length> scroll-buttons: root.overflowing ? 2 * 28px : 0px;
     property <length> room: max(0px, root.width - root.home-end - root.plus-width - root.drag-min - root.caption-width);
-    property <bool> overflowing: root.count * 80px > root.room;
-    property <length> tab-width: root.count == 0 ? 220px : clamp((root.room - root.scroll-buttons) / root.count, 80px, 220px);
-    property <length> strip-width: min(root.count * root.tab-width, root.room - root.scroll-buttons);
+    // Pinned tabs sit first, as icons only; the others share what is left.
+    property <int> pinned: Bridge.pinned-count;
+    property <length> pin-width: 40px;
+    property <length> pinned-width: root.pinned * root.pin-width;
+    property <int> loose: root.count - root.pinned;
+    property <bool> overflowing: root.pinned-width + root.loose * 80px > root.room;
+    property <length> tab-width: root.loose <= 0 ? 220px : clamp((root.room - root.scroll-buttons - root.pinned-width) / root.loose, 80px, 220px);
+    property <length> content-w: root.pinned-width + root.loose * root.tab-width;
+    property <length> strip-width: min(root.content-w, root.room - root.scroll-buttons);
     property <length> strip-x: root.home-end + (root.overflowing ? 28px : 0px);
     property <length> plus-x: root.strip-x + root.strip-width + (root.overflowing ? 28px : 0px) + 4px;
 
@@ -251,18 +274,28 @@ export component TitleBar inherits Rectangle {
     property <length> drag-pos;
     // The place the dragged tab would take, and where every tab sits meanwhile: the ones it passes
     // step aside to leave that place free.
-    property <int> target: clamp(floor(root.drag-pos / root.tab-width), 0, root.count - 1);
+    property <int> raw-target: root.drag-pos < root.pinned-width ? floor(root.drag-pos / root.pin-width)
+        : root.pinned + floor((root.drag-pos - root.pinned-width) / root.tab-width);
+    // A pinned tab stays among the pinned ones, and the others among theirs.
+    property <int> target: root.drag-index < root.pinned ? clamp(root.raw-target, 0, root.pinned - 1)
+        : clamp(root.raw-target, root.pinned, root.count - 1);
+    function width-of(i: int) -> length {
+        return i < root.pinned ? root.pin-width : root.tab-width;
+    }
+    function base(i: int) -> length {
+        return i < root.pinned ? i * root.pin-width : root.pinned-width + (i - root.pinned) * root.tab-width;
+    }
     function slot(i: int) -> length {
         if (root.drag-index < 0 || i == root.drag-index) {
-            return i * root.tab-width;
+            return root.base(i);
         }
         if (root.drag-index < root.target && i > root.drag-index && i <= root.target) {
-            return (i - 1) * root.tab-width;
+            return root.base(i) - root.width-of(root.drag-index);
         }
         if (root.drag-index > root.target && i >= root.target && i < root.drag-index) {
-            return (i + 1) * root.tab-width;
+            return root.base(i) + root.width-of(root.drag-index);
         }
-        return i * root.tab-width;
+        return root.base(i);
     }
     function finish-drag() {
         Bridge.move-tab(root.drag-index, root.target);
@@ -273,10 +306,10 @@ export component TitleBar inherits Rectangle {
     property <int> front: Bridge.active-tab;
     function reveal-front() {
         if (root.overflowing && root.front >= 0) {
-            if (root.front * root.tab-width < -strip.content-x) {
-                strip.content-x = -(root.front * root.tab-width);
-            } else if ((root.front + 1) * root.tab-width > -strip.content-x + strip.width) {
-                strip.content-x = -((root.front + 1) * root.tab-width - strip.width);
+            if (root.base(root.front) < -strip.content-x) {
+                strip.content-x = -root.base(root.front);
+            } else if (root.base(root.front) + root.width-of(root.front) > -strip.content-x + strip.width) {
+                strip.content-x = -(root.base(root.front) + root.width-of(root.front) - strip.width);
             }
         }
     }
@@ -316,14 +349,14 @@ export component TitleBar inherits Rectangle {
         y: parent.height - Metrics.tab-height;
         width: root.strip-width;
         height: Metrics.tab-height;
-        content-width: root.count * root.tab-width;
+        content-width: root.content-w;
         interactive: false;
         // The tab as it follows the pointer: solid, raised, and the tab it will become.
         if root.drag-index >= 0: Rectangle {
-            x: clamp(root.drag-pos - root.drag-grab, 0px, max(0px, root.count * root.tab-width - root.tab-width));
+            x: clamp(root.drag-pos - root.drag-grab, 0px, max(0px, root.content-w - root.width-of(root.drag-index)));
             y: 0;
             z: 20;
-            width: root.tab-width;
+            width: root.width-of(root.drag-index);
             height: Metrics.tab-height;
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
@@ -340,6 +373,7 @@ export component TitleBar inherits Rectangle {
                 accessible-role: none;
             }
             Text {
+                visible: !Bridge.tabs[root.drag-index].pinned;
                 x: 34px;
                 width: parent.width - 46px;
                 height: parent.height;
@@ -354,7 +388,7 @@ export component TitleBar inherits Rectangle {
         for tab[i] in Bridge.tabs: TabItem {
             x: root.slot(i);
             y: 0;
-            width: root.tab-width;
+            width: root.width-of(i);
             animate x { duration: 140ms; easing: ease-out; }
             info: tab;
             selected: Bridge.active-tab == i;
@@ -362,16 +396,17 @@ export component TitleBar inherits Rectangle {
             dragging: root.drag-index == i;
             drag-begin(grab) => {
                 root.drag-grab = grab;
-                root.drag-pos = i * root.tab-width + grab;
+                root.drag-pos = root.base(i) + grab;
                 root.drag-index = i;
             }
-            drag-moved(mx) => { root.drag-pos = i * root.tab-width + mx; }
+            drag-moved(mx) => { root.drag-pos = root.base(i) + mx; }
             drag-ended => { root.finish-drag(); }
             activate => { Bridge.select-tab(i); }
             close => { Bridge.close-tab(i); }
             menu(mx, my) => {
                 root.menu-index = i;
                 root.menu-favorite = tab.favorite;
+                root.menu-pinned = tab.pinned;
                 root.menu-x = self.x + strip.content-x + strip.x + mx;
                 root.menu-y = strip.y + my;
                 tab-menu.show();
@@ -438,6 +473,7 @@ export component TitleBar inherits Rectangle {
 
     property <int> menu-index;
     property <bool> menu-favorite;
+    property <bool> menu-pinned;
     property <length> menu-x;
     property <length> menu-y;
     tab-menu := PopupWindow {
@@ -447,6 +483,11 @@ export component TitleBar inherits Rectangle {
         Flyout {
             VerticalLayout {
                 padding: 4px;
+                MenuItem {
+                    label: root.menu-pinned ? "Unpin tab" : "Pin tab";
+                    clicked => { Bridge.tab-pin(root.menu-index); }
+                }
+                MenuRule { }
                 MenuItem {
                     label: "Close tab";
                     hint: "Ctrl+W";

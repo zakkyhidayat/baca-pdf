@@ -85,6 +85,7 @@ pub struct SessionTab {
     pub zoom: Zoom,
     /// Clockwise quarter turns.
     pub turns: u8,
+    pub pinned: bool,
 }
 
 /// Outer position and inner size in physical pixels.
@@ -307,6 +308,7 @@ pub fn load_session() -> Session {
                 spot: Spot { page: f.get(1)?.parse().ok()?, fy: f.get(2)?.parse().ok()? },
                 zoom: Zoom::from_text(f.get(3)?)?,
                 turns: f.get(4).and_then(|t| t.parse().ok()).unwrap_or(0) % 4,
+                pinned: f.get(5) == Some(&"pin"),
             })
         })();
         session.tabs.extend(parsed);
@@ -327,7 +329,7 @@ pub fn save_session(session: &Session) {
         lines.push(format!("window\t{}\t{}\t{}\t{}\t{state}", w.x, w.y, w.width, w.height));
     }
     for t in &session.tabs {
-        lines.push(format!("{}\t{}\t{:.4}\t{}\t{}", t.path.display(), t.spot.page, t.spot.fy, t.zoom.to_text(), t.turns));
+        lines.push(format!("{}\t{}\t{:.4}\t{}\t{}\t{}", t.path.display(), t.spot.page, t.spot.fy, t.zoom.to_text(), t.turns, if t.pinned { "pin" } else { "-" }));
     }
     write_lines("session.tsv", &lines);
 }
