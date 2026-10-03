@@ -186,6 +186,8 @@ export global Bridge {
     in property <[RecentItem]> favorites;
     in property <[BookmarkFile]> bookmark-files;
     in property <bool> restore-tabs;
+    in property <string> author;
+    callback set-author(string);
     in property <bool> auto-reload: true;
     // 0 automatic, 1 page fit, 2 page width, 3 actual size.
     in property <int> default-zoom;
@@ -324,6 +326,7 @@ export global Bridge {
     // Editing a sticky note: clicking its icon on the page opens this.
     in-out property <bool> note-edit-open;
     in-out property <string> note-edit-text;
+    in-out property <string> note-edit-info;
     callback note-edit-save(string);
     callback note-edit-delete();
     callback note-edit-cancel();

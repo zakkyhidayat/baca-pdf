@@ -89,6 +89,8 @@ struct Viewer {
     note_mode: bool,
     /// Sticky notes of the open document: page, index, area as page fractions, text.
     annots: Vec<(usize, usize, &'static str, [f32; 4], String)>,
+    /// Who made each annotation and when, by page and position.
+    annot_info: HashMap<(usize, usize), String>,
     /// The annotation picked on the page, and a drag that moves or resizes it.
     selected: Option<annotate::Selected>,
     annot_drag: Option<annotate::AnnotDrag>,
@@ -265,6 +267,7 @@ fn main() -> Result<(), slint::PlatformError> {
             text_target: None,
             note_mode: false,
             annots: Vec::new(),
+            annot_info: HashMap::new(),
             selected: None,
             annot_drag: None,
             note_edit: None,
@@ -420,6 +423,13 @@ fn main() -> Result<(), slint::PlatformError> {
             viewer.settings.print_scale = i.clamp(0, 1);
             store::save_settings(&viewer.settings);
             viewer.sync_home(ui);
+        })
+    });
+    b.on_set_author(|name| {
+        with_viewer(|viewer, _| {
+            viewer.settings.author = name.trim().to_string();
+            render::set_author(&viewer.settings.author);
+            store::save_settings(&viewer.settings);
         })
     });
     b.on_open_url(|url| platform::shell_open(&url));
@@ -667,6 +677,7 @@ fn main() -> Result<(), slint::PlatformError> {
     WINDOW.with(|w| *w.borrow_mut() = Some(ui.as_weak()));
     titlebar::on_settings_change(on_settings_change);
     platform::register_file_type();
+    with_viewer(|viewer, _| render::set_author(&viewer.settings.author));
     titlebar::on_navigate(|step| {
         let _ = slint::invoke_from_event_loop(move || with_viewer(|viewer, ui| viewer.history_step(ui, step)));
     });

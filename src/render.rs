@@ -952,9 +952,23 @@ fn made_by(annotation: &PdfPageAnnotation) -> String {
     }
 }
 
-/// The name written on what is added here: the Windows user name.
+static AUTHOR: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// The name chosen in the settings; empty goes back to the Windows user name.
+pub fn set_author(name: &str) {
+    if let Ok(mut author) = AUTHOR.lock() {
+        *author = name.trim().to_string();
+    }
+}
+
+/// The name written on what is added here.
 fn author() -> String {
-    std::env::var("USERNAME").unwrap_or_default()
+    let chosen = AUTHOR.lock().map(|a| a.clone()).unwrap_or_default();
+    if chosen.is_empty() {
+        std::env::var("USERNAME").unwrap_or_default()
+    } else {
+        chosen
+    }
 }
 
 /// Records who made an annotation, and when.

@@ -346,6 +346,39 @@ export component Home inherits Rectangle {
                     }
                     VerticalLayout {
                         alignment: center;
+                        // The name written on annotations; empty uses the Windows user name.
+                        Rectangle {
+                            width: 130px;
+                            height: 32px;
+                            border-radius: 4px;
+                            border-width: author-field.has-focus ? 2px : 1px;
+                            border-color: author-field.has-focus ? Theme.accent : Theme.divider;
+                            if author-field.text == "": Text {
+                                x: 8px;
+                                text: "Author name";
+                                color: Theme.text-secondary;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                            author-field := TextInput {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                                text: Bridge.author;
+                                single-line: true;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                color: Theme.text;
+                                selection-background-color: Theme.accent;
+                                selection-foreground-color: Theme.on-accent;
+                                accessible-label: "Author name written on annotations. Leave empty to use the Windows user name";
+                                edited => { Bridge.set-author(self.text); }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
                         IconButton {
                             // History
                             glyph: "\u{E81C}";

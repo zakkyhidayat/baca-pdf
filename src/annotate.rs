@@ -402,6 +402,7 @@ impl Viewer {
         self.note_edit = Some((sel.page, sel.index));
         let b = ui.global::<Bridge>();
         b.set_note_edit_text(sel.text.clone().into());
+        b.set_note_edit_info(self.annot_info.get(&(sel.page, sel.index)).cloned().unwrap_or_default().into());
         b.set_note_edit_x(cx);
         b.set_note_edit_y(cy + ch + 6.0);
         b.set_note_edit_top(cy);
@@ -461,6 +462,7 @@ impl Viewer {
 
     pub(crate) fn show_annotations(&mut self, ui: &AppWindow, rows: Vec<crate::render::AnnotRow>) {
         self.annots = rows.iter().map(|r| (r.page, r.index, r.kind, r.rect, r.preview.clone())).collect();
+        self.annot_info = rows.iter().map(|r| ((r.page, r.index), r.info.clone())).collect();
         if self.annot_drag.is_none() {
             let found = self.selected.as_ref().and_then(|s| self.annots.iter().find(|a| a.0 == s.page && a.1 == s.index && a.2 == s.kind).cloned());
             match (self.selected.as_mut(), found) {

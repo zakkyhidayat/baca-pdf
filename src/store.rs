@@ -110,6 +110,8 @@ pub struct Settings {
     /// 0 follows Windows, 1 light, 2 dark.
     pub theme: i32,
     pub restore_tabs: bool,
+    /// The name written on annotations; empty means the Windows user name.
+    pub author: String,
     pub auto_reload: bool,
     pub default_zoom: Zoom,
     pub sidebar: bool,
@@ -126,6 +128,7 @@ impl Default for Settings {
         Settings {
             theme: 0,
             restore_tabs: false,
+            author: String::new(),
             auto_reload: true,
             default_zoom: Zoom::Auto,
             sidebar: false,
@@ -181,6 +184,7 @@ pub fn load_settings() -> Settings {
         match key {
             "theme" => s.theme = value.parse().unwrap_or(0).clamp(0, 2),
             "restore_tabs" => s.restore_tabs = value == "1",
+            "author" => s.author = value.trim().to_string(),
             "auto_reload" => s.auto_reload = value == "1",
             "default_zoom" => s.default_zoom = Zoom::from_text(value).unwrap_or_default(),
             "sidebar" => s.sidebar = value == "1",
@@ -201,6 +205,7 @@ pub fn save_settings(s: &Settings) {
         &[
             format!("theme\t{}", s.theme),
             format!("restore_tabs\t{}", flag(s.restore_tabs)),
+            format!("author\t{}", s.author.replace(['\t', '\n'], " ")),
             format!("auto_reload\t{}", flag(s.auto_reload)),
             format!("default_zoom\t{}", s.default_zoom.to_text()),
             format!("sidebar\t{}", flag(s.sidebar)),

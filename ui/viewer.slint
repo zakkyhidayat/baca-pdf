@@ -870,7 +870,7 @@ export component PageArea inherits Rectangle {
             if Bridge.note-edit-open: editor := Rectangle {
                 property <bool> want-focus: true;
                 width: 320px;
-                height: 104px;
+                height: Bridge.note-edit-info == "" ? 104px : 126px;
                 x: max(8px - Bridge.view-x, min(Bridge.note-edit-x, -Bridge.view-x + Bridge.viewport-width - self.width - 8px));
                 y: (Bridge.note-edit-y + self.height > -Bridge.view-y + Bridge.viewport-height - 8px)
                     ? max(8px - Bridge.view-y, Bridge.note-edit-top - self.height - 6px)
@@ -895,6 +895,13 @@ export component PageArea inherits Rectangle {
                 VerticalLayout {
                     padding: 10px;
                     spacing: 8px;
+                    if Bridge.note-edit-info != "": Text {
+                        text: Bridge.note-edit-info;
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
                     Rectangle {
                         height: 36px;
                         border-radius: 4px;

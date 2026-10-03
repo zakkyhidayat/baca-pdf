@@ -379,6 +379,7 @@ impl Viewer {
         self.bookmark_file_model.set_vec(files);
         let b = ui.global::<Bridge>();
         b.set_restore_tabs(self.settings.restore_tabs);
+        b.set_author(self.settings.author.clone().into());
         b.set_auto_reload(self.settings.auto_reload);
         b.set_print_scale(self.settings.print_scale);
         b.set_default_zoom(match self.settings.default_zoom {
