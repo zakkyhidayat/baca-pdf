@@ -86,6 +86,10 @@ struct Viewer {
     text_target: Option<annotate::TextTarget>,
     /// The text being typed becomes a sticky note instead of text on the page.
     note_mode: bool,
+    /// Sticky notes of the open document: page, index, area as page fractions, text.
+    notes: Vec<(usize, usize, [f32; 4], String)>,
+    /// The note whose editor is open: page and index.
+    note_edit: Option<(usize, usize)>,
     /// Where the page menu was opened, in document coordinates.
     menu_point: Option<(f32, f32)>,
     /// What waits for the answer to "save your changes?".
@@ -252,6 +256,8 @@ fn main() -> Result<(), slint::PlatformError> {
             stroke: None,
             text_target: None,
             note_mode: false,
+            notes: Vec::new(),
+            note_edit: None,
             menu_point: None,
             pending: None,
             confirm_tab: None,
@@ -563,7 +569,10 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_read_aloud(|| with_viewer(|viewer, ui| viewer.read_aloud(ui)));
     b.on_translate(|| with_viewer(|viewer, ui| viewer.translate(ui)));
     b.on_confirm_choice(|choice| with_viewer(|viewer, ui| viewer.confirm_choice(ui, choice)));
-    b.on_link_click(|x, y| with_viewer(|viewer, _| viewer.click_at(x, y)));
+    b.on_link_click(|x, y| with_viewer(|viewer, ui| viewer.click_at(ui, x, y)));
+    b.on_note_edit_save(|text| with_viewer(|viewer, ui| viewer.note_edit_save(ui, text.to_string())));
+    b.on_note_edit_delete(|| with_viewer(|viewer, ui| viewer.note_edit_delete(ui)));
+    b.on_note_edit_cancel(|| with_viewer(|viewer, ui| viewer.note_edit_close(ui)));
     b.on_history_step(|step| with_viewer(|viewer, ui| viewer.history_step(ui, step)));
     b.on_submit_password(|password| with_viewer(|viewer, ui| viewer.submit_password(ui, password.to_string())));
     b.on_select_at(|phase, x, y| with_viewer(|viewer, ui| viewer.select_at(ui, phase, x, y)));

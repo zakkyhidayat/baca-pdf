@@ -241,7 +241,29 @@ impl Viewer {
         }
     }
 
+    pub(crate) fn note_edit_close(&mut self, ui: &AppWindow) {
+        self.note_edit = None;
+        ui.global::<Bridge>().set_note_edit_open(false);
+    }
+
+    pub(crate) fn note_edit_save(&mut self, ui: &AppWindow, text: String) {
+        let (Some((page, index)), Some(doc)) = (self.note_edit, self.active_id()) else { return };
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            self.renderer.edit(EditJob::SetNote { doc, page, index, text });
+        }
+        self.note_edit_close(ui);
+    }
+
+    pub(crate) fn note_edit_delete(&mut self, ui: &AppWindow) {
+        if let (Some((page, index)), Some(doc)) = (self.note_edit, self.active_id()) {
+            self.renderer.edit(EditJob::DeleteAnnotation { doc, page, index });
+        }
+        self.note_edit_close(ui);
+    }
+
     pub(crate) fn show_annotations(&mut self, rows: Vec<crate::render::AnnotRow>) {
+        self.notes = rows.iter().filter(|r| r.kind == "Note").map(|r| (r.page, r.index, r.rect, r.preview.clone())).collect();
         let rows: Vec<AnnotationRow> = rows
             .into_iter()
             .map(|r| AnnotationRow {

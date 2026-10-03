@@ -96,6 +96,8 @@ pub struct AnnotRow {
     pub color: [u8; 3],
     /// How far down the page the annotation starts, from 0 to 1.
     pub fy: f32,
+    /// Left, top, right and bottom as fractions of the page, for clicking on it.
+    pub rect: [f32; 4],
 }
 
 /// Where a link inside a page leads.
@@ -115,6 +117,7 @@ pub enum EditJob {
     /// Writes the changes into the open file itself, keeping the version before the first save beside it.
     SaveOriginal { doc: u64, path: PathBuf, token: u64 },
     ListAnnotations { doc: u64 },
+    SetNote { doc: u64, page: usize, index: usize, text: String },
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
     DeleteAnnotation { doc: u64, page: usize, index: usize },
 }
@@ -130,6 +133,7 @@ impl EditJob {
             | EditJob::Save { doc, .. }
             | EditJob::SaveOriginal { doc, .. }
             | EditJob::ListAnnotations { doc }
+            | EditJob::SetNote { doc, .. }
             | EditJob::Note { doc, .. }
             | EditJob::DeleteAnnotation { doc, .. } => *doc,
         }
@@ -455,6 +459,10 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     EditJob::SaveOriginal { .. } => {}
                     EditJob::Note { page, turns, point, text, .. } => {
                         let (pages, message) = split(edit_note(document, page, turns, point, &text).map(|p| vec![p]));
+                        deliver(Event::Annotated { doc, pages, message });
+                    }
+                    EditJob::SetNote { page, index, text, .. } => {
+                        let (pages, message) = split(set_note(document, page, index, &text).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
                     }
                     EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document) }),
@@ -847,6 +855,7 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
     let mut rows = Vec::new();
     for (p, page) in document.pages().iter().enumerate() {
         let height = page.height().value.max(1.0);
+        let width = page.width().value.max(1.0);
         let text = page.text().ok();
         let annotations = page.annotations();
         for i in 0..annotations.len() {
@@ -867,7 +876,7 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
                 "Drawing" => "Freehand line or shape".to_string(),
                 _ => annotation.contents().unwrap_or_default(),
             };
-            let preview: String = preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
+            let preview: String = preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(if kind == "Note" { 2000 } else { 80 }).collect();
             // The real color is not read: for an annotation that has an appearance stream (every one after
             // a save) the library asks PDFium about the wrong object and crashes. A color by kind is shown.
             let color = match kind {
@@ -876,7 +885,13 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
                 _ => [32, 32, 32],
             };
             let fy = (1.0 - bounds.top().value / height).clamp(0.0, 1.0);
-            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy });
+            let rect = [
+                bounds.left().value / width,
+                1.0 - bounds.top().value / height,
+                bounds.right().value / width,
+                1.0 - bounds.bottom().value / height,
+            ];
+            rows.push(AnnotRow { page: p, index: i, kind, preview, color, fy, rect });
         }
     }
     rows
@@ -898,6 +913,13 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
         .set_bounds(PdfRect::new(PdfPoints::new(y - 24.0), PdfPoints::new(x), PdfPoints::new(y), PdfPoints::new(x + 24.0)))
         .map_err(|e| describe(&e))?;
     annotation.set_stroke_color(pdf_color([255, 214, 10])).map_err(|e| describe(&e))?;
+    Ok(index)
+}
+
+fn set_note(document: &PdfDocument, index: usize, annotation: usize, text: &str) -> Result<usize, String> {
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
+    found.set_contents(text).map_err(|e| describe(&e))?;
     Ok(index)
 }
 

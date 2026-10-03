@@ -312,6 +312,15 @@ export global Bridge {
     // 0 pen, 1 rectangle, 2 ellipse, 3 line, 4 arrow.
     in-out property <int> draw-shape;
     callback note-here();
+    // Auto-scroll: the page moves down by itself; the speed is a step from 1 to 8.
+    in-out property <bool> auto-scroll;
+    in-out property <int> auto-speed: 3;
+    // Editing a sticky note: clicking its icon on the page opens this.
+    in-out property <bool> note-edit-open;
+    in-out property <string> note-edit-text;
+    callback note-edit-save(string);
+    callback note-edit-delete();
+    callback note-edit-cancel();
     callback save();
     callback save-copy();
 

@@ -704,6 +704,13 @@ export component Toolbar inherits Rectangle {
                             hint: "Ctrl+drag";
                             clicked => { Bridge.zoom-area = true; }
                         }
+                        MenuItem {
+                            glyph: "\u{E768}";
+                            label: "Auto-scroll";
+                            checkable: true;
+                            checked: Bridge.auto-scroll;
+                            clicked => { Bridge.auto-scroll = !Bridge.auto-scroll; }
+                        }
                         MenuRule { }
                         Rectangle {
                             height: Metrics.touch ? 44px : 38px;

@@ -2,7 +2,7 @@
 
 import { Palette } from "std-widgets.slint";
 import { Theme, Metrics, Glyph, Tip } from "theme.slint";
-import { IconButton, Flyout } from "controls.slint";
+import { IconButton, Flyout, PrimaryButton, SecondaryButton } from "controls.slint";
 import { Bridge, DocState, PageView, Mark, ThumbView, OutlineRow, TabInfo, RecentItem, BookmarkFile, PropRow, AnnotationRow } from "bridge.slint";
 import { TitleBar } from "titlebar.slint";
 import { Toolbar, FindFlyout, InkOptions } from "toolbar.slint";
@@ -82,6 +82,7 @@ export component AppWindow inherits Window {
             if (event.text == Key.F1) { Bridge.shortcuts-open = true; return accept; }
             if (event.text == Key.Escape) {
                 if (Bridge.zoom-area) { Bridge.zoom-area = false; return accept; }
+                if (Bridge.auto-scroll) { Bridge.auto-scroll = false; return accept; }
                 if (Bridge.presenting) { Bridge.toggle-presentation(); return accept; }
                 if (Bridge.find-open) { root.close-find(); return accept; }
                 if (Bridge.tool != 0) { Bridge.tool = 0; Bridge.tool-changed(); return accept; }
@@ -244,6 +245,107 @@ export component AppWindow inherits Window {
         close-find => { root.close-find(); }
     }
 
+    // Auto-scroll: a small control to slow down, speed up or stop.
+    if Bridge.auto-scroll && Bridge.state == DocState.ready && !Bridge.presenting: Flyout {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - 24px;
+        width: auto-row.preferred-width;
+        height: auto-row.preferred-height;
+        auto-row := HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            IconButton {
+                // Remove
+                glyph: "\u{E738}";
+                label: "Scroll slower";
+                enabled: Bridge.auto-speed > 1;
+                clicked => { Bridge.auto-speed = Bridge.auto-speed - 1; }
+            }
+            Text {
+                text: "Auto-scroll " + Bridge.auto-speed;
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                min-width: 96px;
+                accessible-role: text;
+            }
+            IconButton {
+                // Add
+                glyph: "\u{E710}";
+                label: "Scroll faster";
+                enabled: Bridge.auto-speed < 8;
+                clicked => { Bridge.auto-speed = Bridge.auto-speed + 1; }
+            }
+            IconButton {
+                // Cancel
+                glyph: "\u{E711}";
+                label: "Stop auto-scroll (Esc)";
+                clicked => { Bridge.auto-scroll = false; }
+            }
+        }
+    }
+
+    // A sticky note being read or edited.
+    if Bridge.note-edit-open && Bridge.state == DocState.ready: Flyout {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - 24px;
+        width: min(420px, root.width - 24px);
+        height: 124px;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+            Rectangle {
+                height: 36px;
+                border-radius: 4px;
+                background: Theme.surface;
+                border-width: 2px;
+                border-color: Theme.accent;
+                note-field := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height;
+                    text: Bridge.note-edit-text;
+                    font-size: 14px;
+                    single-line: true;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                    selection-background-color: Theme.accent;
+                    selection-foreground-color: Theme.on-accent;
+                    accessible-label: "Note text. Press Enter to save";
+                    accepted => { Bridge.note-edit-save(self.text); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Escape) {
+                            Bridge.note-edit-cancel();
+                            return accept;
+                        }
+                        reject
+                    }
+                    init => {
+                        self.focus();
+                        self.select-all();
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                SecondaryButton {
+                    label: "Delete";
+                    clicked => { Bridge.note-edit-delete(); }
+                }
+                SecondaryButton {
+                    label: "Cancel";
+                    clicked => { Bridge.note-edit-cancel(); }
+                }
+                PrimaryButton {
+                    label: "Save";
+                    clicked => { Bridge.note-edit-save(note-field.text); }
+                }
+            }
+        }
+    }
+
     ink-options := InkOptions {
         visible: (Bridge.tool == 1 || Bridge.tool == 2) && Bridge.state == DocState.ready && root.chrome;
         x: toolbar.ink-x;
@@ -336,6 +438,20 @@ export component AppWindow inherits Window {
             vertical-alignment: center;
             horizontal-alignment: center;
             accessible-role: none;
+        }
+    }
+    Timer {
+        interval: 16ms;
+        running: Bridge.auto-scroll && Bridge.state == DocState.ready && !Bridge.presenting;
+        // Pixels per second for each speed step, spent over one 16 ms tick.
+        property <[length]> pace: [20px, 40px, 70px, 110px, 160px, 230px, 330px, 450px];
+        property <length> bottom: -max(0px, Bridge.content-height - Bridge.viewport-height);
+        triggered => {
+            if (Bridge.view-y <= self.bottom + 0.5px) {
+                Bridge.auto-scroll = false;
+            } else {
+                Bridge.view-y = max(self.bottom, Bridge.view-y - self.pace[clamp(Bridge.auto-speed, 1, 8) - 1] * 0.016);
+            }
         }
     }
     // A tooltip never outlives a few seconds, even if its button vanished while it was up.
