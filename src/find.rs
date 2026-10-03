@@ -150,13 +150,13 @@ impl Viewer {
                 let (first, last) = if page >= sel.anchor_page { (sel.anchor_page, page) } else { (page, sel.anchor_page) };
                 let (start, end) = if page >= sel.anchor_page { (sel.anchor, point) } else { (point, sel.anchor) };
                 let pieces = if first == last {
-                    vec![SelectPiece { page, from: Some(sel.anchor), to: Some(point) }]
+                    vec![SelectPiece { page, from: Some(sel.anchor), to: Some(point), expand: 0 }]
                 } else {
                     // The pages in between are taken whole; very long drags stop at a limit.
                     let last = last.min(first + 300);
-                    let mut pieces = vec![SelectPiece { page: first, from: Some(start), to: None }];
-                    pieces.extend((first + 1..last).map(|p| SelectPiece { page: p, from: None, to: None }));
-                    pieces.push(SelectPiece { page: last, from: None, to: Some(end) });
+                    let mut pieces = vec![SelectPiece { page: first, from: Some(start), to: None, expand: 0 }];
+                    pieces.extend((first + 1..last).map(|p| SelectPiece { page: p, from: None, to: None, expand: 0 }));
+                    pieces.push(SelectPiece { page: last, from: None, to: Some(end), expand: 0 });
                     pieces
                 };
                 let generation = sel.generation;
@@ -164,6 +164,24 @@ impl Viewer {
                     sel.pieces = pieces.clone();
                 }
                 self.renderer.select(SelectJob { doc, generation, turns: self.turns, pieces });
+            }
+            // A double click selects the word under the pointer, a triple click the line.
+            2 | 3 => {
+                self.select_gen += 1;
+                let pieces = vec![SelectPiece { page, from: Some(point), to: Some(point), expand: phase as u8 - 1 }];
+                self.selection = Some(Selection {
+                    generation: self.select_gen,
+                    anchor_page: page,
+                    anchor: point,
+                    pages: Vec::new(),
+                    pieces: pieces.clone(),
+                    text: String::new(),
+                });
+                self.renderer.select(SelectJob { doc, generation: self.select_gen, turns: self.turns, pieces });
+                self.refresh(ui);
+                if ui.global::<Bridge>().get_tool() == 1 {
+                    self.annotate_selection(ui);
+                }
             }
             _ => {}
         }
@@ -178,10 +196,10 @@ impl Viewer {
             anchor_page: page,
             anchor: [0.0, 0.0],
             pages: Vec::new(),
-            pieces: vec![SelectPiece { page, from: None, to: None }],
+            pieces: vec![SelectPiece { page, from: None, to: None, expand: 0 }],
             text: String::new(),
         });
-        let pieces = vec![SelectPiece { page, from: None, to: None }];
+        let pieces = vec![SelectPiece { page, from: None, to: None, expand: 0 }];
         self.renderer.select(SelectJob { doc, generation: self.select_gen, turns: self.turns, pieces });
     }
 

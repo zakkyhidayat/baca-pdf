@@ -156,6 +156,8 @@ pub struct SelectPiece {
     pub page: usize,
     pub from: Option<[f32; 2]>,
     pub to: Option<[f32; 2]>,
+    /// 0 keeps the range as dragged, 1 grows it to whole words, 2 to whole lines.
+    pub expand: u8,
 }
 
 pub struct SelectJob {
@@ -776,7 +778,32 @@ fn piece_range(page: &PdfPage, text: &PdfPageText, piece: &SelectPiece, turns: u
     match (piece.from.is_some(), piece.to.is_some()) {
         (true, true) => {
             let (a, b) = (from?, to?);
-            Some((a.min(b), a.max(b)))
+            let (mut lo, mut hi) = (a.min(b), a.max(b));
+            if piece.expand > 0 {
+                let chars = text.chars();
+                let letter = |i: usize| chars.get(i).ok().and_then(|c| c.unicode_char()).is_some_and(|c| c.is_alphanumeric() || c == '_');
+                // Where a character sits vertically, to tell which line it is on.
+                let level = |i: usize| chars.get(i).ok().and_then(|c| c.loose_bounds().ok()).map(|r| ((r.top().value + r.bottom().value) / 2.0, (r.top().value - r.bottom().value).abs()));
+                if piece.expand == 1 {
+                    if letter(lo) {
+                        while lo > 0 && letter(lo - 1) {
+                            lo -= 1;
+                        }
+                        while hi + 1 < count && letter(hi + 1) {
+                            hi += 1;
+                        }
+                    }
+                } else if let Some((mid, height)) = level(lo) {
+                    let same = |i: usize| level(i).is_some_and(|(m, _)| (m - mid).abs() < height * 0.6);
+                    while lo > 0 && same(lo - 1) {
+                        lo -= 1;
+                    }
+                    while hi + 1 < count && same(hi + 1) {
+                        hi += 1;
+                    }
+                }
+            }
+            Some((lo, hi))
         }
         (true, false) => Some((from?, count - 1)),
         (false, true) => Some((0, to?)),
@@ -909,7 +936,7 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
     rows
 }
 
-/// A sticky note: a small speech bubble drawn into an ink annotation, with the text as its contents.
+/// A sticky note: a standard Text annotation, so other PDF viewers list it as a note and show its text.
 fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], text: &str) -> Result<usize, String> {
     if turns % 4 != 0 {
         return Err("Turn the page back upright to add a note.".into());
@@ -920,35 +947,11 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
         .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
         .map_err(|e| describe(&e))?;
     let (x, y) = (x.value, y.value);
-    let mut annotation = page.annotations_mut().create_ink_annotation().map_err(|e| describe(&e))?;
+    let mut annotation = page.annotations_mut().create_text_annotation(text).map_err(|e| describe(&e))?;
     annotation
         .set_bounds(PdfRect::new(PdfPoints::new(y - 24.0), PdfPoints::new(x), PdfPoints::new(y), PdfPoints::new(x + 24.0)))
         .map_err(|e| describe(&e))?;
-    annotation.set_contents(text).map_err(|e| describe(&e))?;
-    let ink = pdf_color([92, 72, 0]);
-    let fill = pdf_color([255, 214, 10]);
-    let pt = |v: f32| PdfPoints::new(v);
-    // The tail first, then the round body over its top, then two lines of "text".
-    let mut tail = PdfPagePathObject::new(document, pt(x + 6.0), pt(y - 16.0), Some(ink), Some(pt(1.2)), Some(fill)).map_err(|e| describe(&e))?;
-    tail.line_to(pt(x + 4.0), pt(y - 23.0)).map_err(|e| describe(&e))?;
-    tail.line_to(pt(x + 12.0), pt(y - 18.0)).map_err(|e| describe(&e))?;
-    tail.close_path().map_err(|e| describe(&e))?;
-    annotation.objects_mut().add_path_object(tail).map_err(|e| describe(&e))?;
-    let body = PdfPagePathObject::new_ellipse(
-        document,
-        PdfRect::new(pt(y - 20.0), pt(x + 1.0), pt(y - 1.0), pt(x + 23.0)),
-        Some(ink),
-        Some(pt(1.2)),
-        Some(fill),
-    )
-    .map_err(|e| describe(&e))?;
-    annotation.objects_mut().add_path_object(body).map_err(|e| describe(&e))?;
-    for (dy, len) in [(7.0, 12.0), (11.0, 8.0)] {
-        annotation
-            .objects_mut()
-            .create_path_object_line(pt(x + 6.0), pt(y - 4.0 - dy + 3.0), pt(x + 6.0 + len), pt(y - 4.0 - dy + 3.0), ink, pt(1.4))
-            .map_err(|e| describe(&e))?;
-    }
+    annotation.set_stroke_color(pdf_color([255, 214, 10])).map_err(|e| describe(&e))?;
     Ok(index)
 }
 

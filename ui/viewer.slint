@@ -628,7 +628,7 @@ export component PageArea inherits Rectangle {
                 }
             }
 
-            TouchArea {
+            page-touch := TouchArea {
                 x: 0;
                 y: 0;
                 width: scroller.content-width;
@@ -638,11 +638,32 @@ export component PageArea inherits Rectangle {
                 property <bool> drawing;
                 property <bool> zooming;
                 property <bool> annotating;
+                // Clicks in a row at one spot: two select a word, three a line. Touch taps: two zoom.
+                property <int> clicks;
+                property <bool> tap-armed;
+                Timer {
+                    interval: 500ms;
+                    running: page-touch.clicks > 0;
+                    triggered => { page-touch.clicks = 0; }
+                }
+                Timer {
+                    interval: 350ms;
+                    running: page-touch.tap-armed;
+                    triggered => { page-touch.tap-armed = false; }
+                }
                 property <length> down-x;
                 property <length> down-y;
                 pointer-event(event) => {
                     if (event.touch-finger-id != 0 && Bridge.tool == 0) {
-                        if (event.kind == PointerEventKind.down) { Metrics.touch = true; }
+                        if (event.kind == PointerEventKind.down) {
+                            Metrics.touch = true;
+                            if (self.tap-armed) {
+                                self.tap-armed = false;
+                                Bridge.zoom-toggle(self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
+                            } else {
+                                self.tap-armed = true;
+                            }
+                        }
                         return;
                     }
                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
@@ -701,11 +722,22 @@ export component PageArea inherits Rectangle {
                         }
                         if (self.selecting) {
                             self.selecting = false;
-                            if (Bridge.tool == 1) {
-                                Bridge.annotate-selection();
-                            } else if (abs(self.mouse-x - self.down-x) < 4px && abs(self.mouse-y - self.down-y) < 4px) {
-                                // A press and release in the same spot is a click, which may land on a link.
-                                Bridge.link-click(self.mouse-x, self.mouse-y);
+                            if (abs(self.mouse-x - self.down-x) < 4px && abs(self.mouse-y - self.down-y) < 4px) {
+                                // A press and release in the same spot is a click.
+                                self.clicks += 1;
+                                if (self.clicks == 2) {
+                                    Bridge.select-at(2, self.mouse-x, self.mouse-y);
+                                } else if (self.clicks >= 3) {
+                                    Bridge.select-at(3, self.mouse-x, self.mouse-y);
+                                } else if (Bridge.tool != 1) {
+                                    // The first click may land on a link.
+                                    Bridge.link-click(self.mouse-x, self.mouse-y);
+                                }
+                            } else {
+                                self.clicks = 0;
+                                if (Bridge.tool == 1) {
+                                    Bridge.annotate-selection();
+                                }
                             }
                         }
                     }
@@ -720,9 +752,6 @@ export component PageArea inherits Rectangle {
                     }
                     if (self.selecting) { Bridge.select-at(1, self.mouse-x, self.mouse-y); }
                     if (self.drawing) { Bridge.stroke-point(self.mouse-x, self.mouse-y); }
-                }
-                double-clicked => {
-                    Bridge.zoom-toggle(self.mouse-x + Bridge.view-x, self.mouse-y + Bridge.view-y);
                 }
                 scroll-event(event) => {
                     if (event.modifiers.control && event.delta-y != 0) {
