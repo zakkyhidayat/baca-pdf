@@ -87,7 +87,10 @@ struct Viewer {
     /// The text being typed becomes a sticky note instead of text on the page.
     note_mode: bool,
     /// Sticky notes of the open document: page, index, area as page fractions, text.
-    notes: Vec<(usize, usize, [f32; 4], String)>,
+    annots: Vec<(usize, usize, &'static str, [f32; 4], String)>,
+    /// The annotation picked on the page, and a drag that moves or resizes it.
+    selected: Option<annotate::Selected>,
+    annot_drag: Option<annotate::AnnotDrag>,
     /// The note whose editor is open: page and index.
     note_edit: Option<(usize, usize)>,
     /// Where the page menu was opened, in document coordinates.
@@ -256,7 +259,9 @@ fn main() -> Result<(), slint::PlatformError> {
             stroke: None,
             text_target: None,
             note_mode: false,
-            notes: Vec::new(),
+            annots: Vec::new(),
+            selected: None,
+            annot_drag: None,
             note_edit: None,
             menu_point: None,
             pending: None,
@@ -570,6 +575,16 @@ fn main() -> Result<(), slint::PlatformError> {
     b.on_translate(|| with_viewer(|viewer, ui| viewer.translate(ui)));
     b.on_confirm_choice(|choice| with_viewer(|viewer, ui| viewer.confirm_choice(ui, choice)));
     b.on_link_click(|x, y| with_viewer(|viewer, ui| viewer.click_at(ui, x, y)));
+    b.on_annot_press(|x, y| {
+        let mut mode = 0;
+        with_viewer(|viewer, ui| mode = viewer.annot_press(ui, x, y));
+        mode
+    });
+    b.on_annot_drag(|x, y| with_viewer(|viewer, ui| viewer.annot_drag(ui, x, y)));
+    b.on_annot_release(|| with_viewer(|viewer, ui| viewer.annot_release(ui)));
+    b.on_annot_delete(|| with_viewer(|viewer, ui| viewer.delete_selected(ui)));
+    b.on_annot_deselect(|| with_viewer(|viewer, ui| viewer.deselect(ui)));
+    b.on_toggle_auto_scroll(|| with_viewer(|viewer, ui| viewer.toggle_auto_scroll(ui)));
     b.on_note_edit_save(|text| with_viewer(|viewer, ui| viewer.note_edit_save(ui, text.to_string())));
     b.on_note_edit_delete(|| with_viewer(|viewer, ui| viewer.note_edit_delete(ui)));
     b.on_note_edit_cancel(|| with_viewer(|viewer, ui| viewer.note_edit_close(ui)));

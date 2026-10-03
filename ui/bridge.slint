@@ -321,6 +321,23 @@ export global Bridge {
     callback note-edit-save(string);
     callback note-edit-delete();
     callback note-edit-cancel();
+    // The annotation picked on the page (a drawing, shape or note), in document coordinates.
+    in-out property <bool> sel-on;
+    in-out property <length> sel-x;
+    in-out property <length> sel-y;
+    in-out property <length> sel-w;
+    in-out property <length> sel-h;
+    in-out property <bool> sel-resizable;
+    // 0 when nothing was picked, 1 to move it, 2 to 5 to pull a corner.
+    callback annot-press(length, length) -> int;
+    callback annot-drag(length, length);
+    callback annot-release();
+    callback annot-delete();
+    callback annot-deselect();
+    in-out property <length> note-edit-x;
+    in-out property <length> note-edit-y;
+    in-out property <length> note-edit-top;
+    callback toggle-auto-scroll();
     callback save();
     callback save-copy();
 

@@ -79,7 +79,7 @@ impl Viewer {
     }
 
     /// A click on the page: follows a link if there is one under the pointer.
-    pub(crate) fn click_at(&mut self, ui: &AppWindow, x: f32, y: f32) {
+    pub(crate) fn click_at(&mut self, _ui: &AppWindow, x: f32, y: f32) {
         let Some(doc) = self.doc.as_ref().map(|d| d.id) else { return };
         let Some(page) = self.page_near(x, y) else { return };
         let Some([px, py, w, h]) = self.page_rect(page) else { return };
@@ -87,20 +87,6 @@ impl Viewer {
             return;
         }
         let point = [(x - px) / w, (y - py) / h];
-        // A click on a sticky note opens it for editing.
-        if self.turns % 4 == 0 {
-            let slack = 0.004;
-            let hit = self.notes.iter().find(|(p, _, r, _)| {
-                *p == page && point[0] >= r[0] - slack && point[0] <= r[2] + slack && point[1] >= r[1] - slack && point[1] <= r[3] + slack
-            });
-            if let Some((p, i, _, text)) = hit.cloned() {
-                self.note_edit = Some((p, i));
-                let b = ui.global::<Bridge>();
-                b.set_note_edit_text(text.into());
-                b.set_note_edit_open(true);
-                return;
-            }
-        }
         self.renderer.link(LinkJob { doc, page, turns: self.turns, point });
     }
 

@@ -2,7 +2,7 @@
 
 import { ScrollView, ListView } from "std-widgets.slint";
 import { Theme, Metrics, Glyph } from "theme.slint";
-import { IconButton, PrimaryButton, Flyout, MenuItem } from "controls.slint";
+import { IconButton, PrimaryButton, SecondaryButton, Flyout, MenuItem } from "controls.slint";
 import { Bridge, DocState, ThumbView, OutlineRow, AnnotationRow } from "bridge.slint";
 
 component ThumbItem {
@@ -637,6 +637,7 @@ export component PageArea inherits Rectangle {
                 property <bool> selecting;
                 property <bool> drawing;
                 property <bool> zooming;
+                property <bool> annotating;
                 property <length> down-x;
                 property <length> down-y;
                 pointer-event(event) => {
@@ -654,6 +655,7 @@ export component PageArea inherits Rectangle {
                     if (event.button != PointerEventButton.left || Bridge.hand-tool) { return; }
                     if (event.kind == PointerEventKind.down) {
                         root.focus-document();
+                        if (Bridge.note-edit-open) { Bridge.note-edit-cancel(); }
                         if (Bridge.zoom-area || (event.modifiers.control && Bridge.tool == 0)) {
                             self.zooming = true;
                             self.down-x = self.mouse-x;
@@ -663,6 +665,8 @@ export component PageArea inherits Rectangle {
                             Bridge.zr-w = 0px;
                             Bridge.zr-h = 0px;
                             Bridge.zr-on = true;
+                        } else if (Bridge.tool == 0 && Bridge.annot-press(self.mouse-x, self.mouse-y) > 0) {
+                            self.annotating = true;
                         } else if (Bridge.tool == 0 || Bridge.tool == 1) {
                             self.selecting = true;
                             self.down-x = self.mouse-x;
@@ -678,6 +682,10 @@ export component PageArea inherits Rectangle {
                         }
                     }
                     if (event.kind == PointerEventKind.up) {
+                        if (self.annotating) {
+                            self.annotating = false;
+                            Bridge.annot-release();
+                        }
                         if (self.zooming) {
                             self.zooming = false;
                             Bridge.zr-on = false;
@@ -703,6 +711,7 @@ export component PageArea inherits Rectangle {
                     }
                 }
                 moved => {
+                    if (self.annotating) { Bridge.annot-drag(self.mouse-x, self.mouse-y); }
                     if (self.zooming) {
                         Bridge.zr-x = min(self.down-x, self.mouse-x);
                         Bridge.zr-y = min(self.down-y, self.mouse-y);
@@ -737,6 +746,106 @@ export component PageArea inherits Rectangle {
                 accessible-role: none;
             }
 
+            // The annotation picked on the page, with a handle on each corner when it can be resized.
+            if Bridge.sel-on: Rectangle {
+                x: Bridge.sel-x;
+                y: Bridge.sel-y;
+                width: Bridge.sel-w;
+                height: Bridge.sel-h;
+                border-width: 1.5px;
+                border-color: Theme.accent;
+                accessible-role: none;
+            }
+            if Bridge.sel-on && Bridge.sel-resizable: Rectangle {
+                for corner[i] in 4: Rectangle {
+                    x: Bridge.sel-x + (i == 0 || i == 2 ? 0px : Bridge.sel-w) - 5px;
+                    y: Bridge.sel-y + (i < 2 ? 0px : Bridge.sel-h) - 5px;
+                    width: 10px;
+                    height: 10px;
+                    background: white;
+                    border-width: 1.5px;
+                    border-color: Theme.accent;
+                    border-radius: 2px;
+                    accessible-role: none;
+                }
+            }
+
+            // A sticky note being read or edited, next to its icon.
+            if Bridge.note-edit-open: editor := Rectangle {
+                property <bool> want-focus: true;
+                width: 320px;
+                height: 104px;
+                x: max(8px - Bridge.view-x, min(Bridge.note-edit-x, -Bridge.view-x + Bridge.viewport-width - self.width - 8px));
+                y: (Bridge.note-edit-y + self.height > -Bridge.view-y + Bridge.viewport-height - 8px)
+                    ? max(8px - Bridge.view-y, Bridge.note-edit-top - self.height - 6px)
+                    : Bridge.note-edit-y;
+                background: Theme.surface;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.divider;
+                drop-shadow-blur: 12px;
+                drop-shadow-offset-y: 3px;
+                drop-shadow-color: #00000040;
+                // The field takes the keyboard a moment after the box appears, so typing needs no click.
+                Timer {
+                    interval: 90ms;
+                    running: editor.want-focus;
+                    triggered => {
+                        note-field.focus();
+                        note-field.select-all();
+                        editor.want-focus = false;
+                    }
+                }
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+                    Rectangle {
+                        height: 36px;
+                        border-radius: 4px;
+                        background: Theme.surface;
+                        border-width: 2px;
+                        border-color: Theme.accent;
+                        note-field := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            text: Bridge.note-edit-text;
+                            font-size: 14px;
+                            single-line: true;
+                            vertical-alignment: center;
+                            color: Theme.text;
+                            selection-background-color: Theme.accent;
+                            selection-foreground-color: Theme.on-accent;
+                            accessible-label: "Note text. Press Enter to save";
+                            accepted => { Bridge.note-edit-save(self.text); }
+                            key-pressed(event) => {
+                                if (event.text == Key.Escape) {
+                                    Bridge.note-edit-cancel();
+                                    return accept;
+                                }
+                                reject
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        SecondaryButton {
+                            label: "Delete";
+                            clicked => { Bridge.note-edit-delete(); }
+                        }
+                        SecondaryButton {
+                            label: "Cancel";
+                            clicked => { Bridge.note-edit-cancel(); }
+                        }
+                        PrimaryButton {
+                            label: "Save";
+                            clicked => { Bridge.note-edit-save(note-field.text); }
+                        }
+                    }
+                }
+            }
+
             // The line being drawn, before it becomes part of the page.
             if Bridge.stroke-path != "": Path {
                 x: Bridge.stroke-x;
@@ -757,7 +866,16 @@ export component PageArea inherits Rectangle {
             }
 
             // Where text is typed before it is placed on the page.
-            if Bridge.text-open: Rectangle {
+            if Bridge.text-open: typing := Rectangle {
+                property <bool> want-focus: true;
+                Timer {
+                    interval: 90ms;
+                    running: typing.want-focus;
+                    triggered => {
+                        typed.focus();
+                        typing.want-focus = false;
+                    }
+                }
                 x: Bridge.text-x;
                 y: Bridge.text-y;
                 width: max(140px, typed.preferred-width + 20px);

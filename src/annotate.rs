@@ -54,6 +54,40 @@ fn shape_points(shape: i32, a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
     }
 }
 
+/// A drawing, shape or note picked on the page: its place as fractions of the page (left, top, right, bottom).
+#[derive(Clone)]
+pub(crate) struct Selected {
+    page: usize,
+    index: usize,
+    kind: &'static str,
+    rect: [f32; 4],
+    text: String,
+}
+
+/// A press on the picked annotation: 1 moves it, 2 to 5 pull the top left, top right, bottom left or bottom right corner.
+pub(crate) struct AnnotDrag {
+    mode: i32,
+    start: [f32; 2],
+    orig: [f32; 4],
+    moved: bool,
+}
+
+/// Whether a point (as fractions of the page) is on an annotation. Big drawings only answer near their edge,
+/// so a box drawn around a paragraph does not stop the text inside from being selected.
+fn annot_hit(kind: &str, r: &[f32; 4], f: [f32; 2], page: [f32; 2], inside_ok: bool) -> bool {
+    let (sx, sy) = (8.0 / page[0], 8.0 / page[1]);
+    let outer = f[0] >= r[0] - sx && f[0] <= r[2] + sx && f[1] >= r[1] - sy && f[1] <= r[3] + sy;
+    if !outer {
+        return false;
+    }
+    let small = (r[2] - r[0]) * page[0] < 48.0 || (r[3] - r[1]) * page[1] < 48.0;
+    if kind == "Note" || small || inside_ok {
+        return true;
+    }
+    let inner = f[0] > r[0] + sx && f[0] < r[2] - sx && f[1] > r[1] + sy && f[1] < r[3] - sy;
+    !inner
+}
+
 /// Where the text being typed will land.
 pub(crate) struct TextTarget {
     page: usize,
@@ -122,6 +156,8 @@ impl Viewer {
         b.set_stroke_path("".into());
         b.set_text_open(false);
         self.clear_selection(ui);
+        self.deselect(ui);
+        self.note_edit_close(ui);
     }
 
     /// Turns the text selected while the highlighter was on into highlights.
@@ -241,6 +277,152 @@ impl Viewer {
         }
     }
 
+    fn content_rect(&self, page: usize, r: [f32; 4]) -> Option<[f32; 4]> {
+        let [px, py, w, h] = self.page_rect(page)?;
+        Some([px + r[0] * w, py + r[1] * h, (r[2] - r[0]) * w, (r[3] - r[1]) * h])
+    }
+
+    pub(crate) fn show_selection(&self, ui: &AppWindow) {
+        let b = ui.global::<Bridge>();
+        let shown = self.selected.as_ref().and_then(|s| self.content_rect(s.page, s.rect).map(|c| (s, c)));
+        match shown {
+            Some((s, [x, y, w, h])) => {
+                b.set_sel_x(x);
+                b.set_sel_y(y);
+                b.set_sel_w(w);
+                b.set_sel_h(h);
+                b.set_sel_resizable(s.kind != "Note");
+                b.set_sel_on(true);
+            }
+            None => b.set_sel_on(false),
+        }
+    }
+
+    pub(crate) fn deselect(&mut self, ui: &AppWindow) {
+        self.selected = None;
+        self.annot_drag = None;
+        self.show_selection(ui);
+    }
+
+    pub(crate) fn delete_selected(&mut self, ui: &AppWindow) {
+        if let (Some(s), Some(doc)) = (self.selected.clone(), self.active_id()) {
+            self.renderer.edit(EditJob::DeleteAnnotation { doc, page: s.page, index: s.index });
+        }
+        self.deselect(ui);
+    }
+
+    /// A press on the page with no tool: picks a drawing, shape or note, or one of the corners of the picked one.
+    /// Returns what the press will do (see `AnnotDrag`), or 0 when it hit nothing.
+    pub(crate) fn annot_press(&mut self, ui: &AppWindow, x: f32, y: f32) -> i32 {
+        if self.turns % 4 != 0 || self.annots.is_empty() {
+            return 0;
+        }
+        if let Some(s) = &self.selected {
+            if s.kind != "Note" {
+                if let Some([cx, cy, cw, ch]) = self.content_rect(s.page, s.rect) {
+                    let corners = [(cx, cy), (cx + cw, cy), (cx, cy + ch), (cx + cw, cy + ch)];
+                    for (i, (hx, hy)) in corners.iter().enumerate() {
+                        if (x - hx).abs() <= 10.0 && (y - hy).abs() <= 10.0 {
+                            self.annot_drag = Some(AnnotDrag { mode: 2 + i as i32, start: [x, y], orig: s.rect, moved: false });
+                            return 2 + i as i32;
+                        }
+                    }
+                }
+            }
+        }
+        let Some((page, f)) = self.fraction_at(x, y) else {
+            self.deselect(ui);
+            return 0;
+        };
+        let Some([_, _, pw, ph]) = self.page_rect(page) else { return 0 };
+        let current = self.selected.as_ref().map(|s| (s.page, s.index));
+        let hit = self.annots.iter().rev().find(|(p, i, kind, r, _)| {
+            *p == page && matches!(*kind, "Drawing" | "Shape" | "Note") && annot_hit(kind, r, f, [pw, ph], current == Some((*p, *i)))
+        });
+        match hit {
+            Some((p, i, kind, r, text)) => {
+                self.selected = Some(Selected { page: *p, index: *i, kind, rect: *r, text: text.clone() });
+                self.annot_drag = Some(AnnotDrag { mode: 1, start: [x, y], orig: *r, moved: false });
+                self.show_selection(ui);
+                1
+            }
+            None => {
+                self.deselect(ui);
+                0
+            }
+        }
+    }
+
+    pub(crate) fn annot_drag(&mut self, ui: &AppWindow, x: f32, y: f32) {
+        let Some(sel) = self.selected.as_ref() else { return };
+        let Some([_, _, pw, ph]) = self.page_rect(sel.page) else { return };
+        let Some(d) = self.annot_drag.as_mut() else { return };
+        if !d.moved && (x - d.start[0]).abs() < 4.0 && (y - d.start[1]).abs() < 4.0 {
+            return;
+        }
+        d.moved = true;
+        let (dx, dy) = ((x - d.start[0]) / pw, (y - d.start[1]) / ph);
+        let o = d.orig;
+        let min = 0.01;
+        let rect = match d.mode {
+            1 => {
+                let (w, h) = (o[2] - o[0], o[3] - o[1]);
+                let l = (o[0] + dx).clamp(0.0, (1.0 - w).max(0.0));
+                let t = (o[1] + dy).clamp(0.0, (1.0 - h).max(0.0));
+                [l, t, l + w, t + h]
+            }
+            2 => [(o[0] + dx).min(o[2] - min), (o[1] + dy).min(o[3] - min), o[2], o[3]],
+            3 => [o[0], (o[1] + dy).min(o[3] - min), (o[2] + dx).max(o[0] + min), o[3]],
+            4 => [(o[0] + dx).min(o[2] - min), o[1], o[2], (o[3] + dy).max(o[1] + min)],
+            _ => [o[0], o[1], (o[2] + dx).max(o[0] + min), (o[3] + dy).max(o[1] + min)],
+        };
+        let rect = rect.map(|v| v.clamp(0.0, 1.0));
+        if let Some(sel) = self.selected.as_mut() {
+            sel.rect = rect;
+        }
+        self.show_selection(ui);
+    }
+
+    /// The press ended: a drag is saved, and a click on a note opens it.
+    pub(crate) fn annot_release(&mut self, ui: &AppWindow) {
+        let Some(d) = self.annot_drag.take() else { return };
+        let Some(sel) = self.selected.clone() else { return };
+        if d.moved {
+            if let Some(doc) = self.active_id() {
+                self.renderer.edit(EditJob::SetBounds { doc, page: sel.page, index: sel.index, rect: sel.rect });
+            }
+        } else if sel.kind == "Note" {
+            self.open_note_editor(ui, &sel);
+        }
+    }
+
+    fn open_note_editor(&mut self, ui: &AppWindow, sel: &Selected) {
+        let Some([cx, cy, cw, ch]) = self.content_rect(sel.page, sel.rect) else { return };
+        let _ = cw;
+        self.note_edit = Some((sel.page, sel.index));
+        let b = ui.global::<Bridge>();
+        b.set_note_edit_text(sel.text.clone().into());
+        b.set_note_edit_x(cx);
+        b.set_note_edit_y(cy + ch + 6.0);
+        b.set_note_edit_top(cy);
+        b.set_note_edit_open(true);
+    }
+
+    /// Auto-scroll runs on vertical scrolling and single pages, so switching it on switches the view too.
+    pub(crate) fn toggle_auto_scroll(&mut self, ui: &AppWindow) {
+        let b = ui.global::<Bridge>();
+        if b.get_auto_scroll() {
+            b.set_auto_scroll(false);
+            return;
+        }
+        if self.scroll_mode != 0 || self.spread_mode != 0 {
+            self.set_layout_modes(ui, 0, 0);
+            self.save_settings(ui);
+            self.notify(ui, "Auto-scroll uses vertical scrolling and single pages, so the view was switched.");
+        }
+        b.set_auto_scroll(true);
+    }
+
     pub(crate) fn note_edit_close(&mut self, ui: &AppWindow) {
         self.note_edit = None;
         ui.global::<Bridge>().set_note_edit_open(false);
@@ -262,8 +444,18 @@ impl Viewer {
         self.note_edit_close(ui);
     }
 
-    pub(crate) fn show_annotations(&mut self, rows: Vec<crate::render::AnnotRow>) {
-        self.notes = rows.iter().filter(|r| r.kind == "Note").map(|r| (r.page, r.index, r.rect, r.preview.clone())).collect();
+    pub(crate) fn show_annotations(&mut self, ui: &AppWindow, rows: Vec<crate::render::AnnotRow>) {
+        self.annots = rows.iter().map(|r| (r.page, r.index, r.kind, r.rect, r.preview.clone())).collect();
+        if self.annot_drag.is_none() {
+            let found = self.selected.as_ref().and_then(|s| self.annots.iter().find(|a| a.0 == s.page && a.1 == s.index && a.2 == s.kind).cloned());
+            match (self.selected.as_mut(), found) {
+                (Some(s), Some(a)) => {
+                    s.rect = a.3;
+                    s.text = a.4;
+                }
+                _ => self.selected = None,
+            }
+        }
         let rows: Vec<AnnotationRow> = rows
             .into_iter()
             .map(|r| AnnotationRow {
@@ -276,6 +468,7 @@ impl Viewer {
             })
             .collect();
         self.annot_model.set_vec(rows);
+        self.show_selection(ui);
     }
 
     pub(crate) fn on_annotated(&mut self, ui: &AppWindow, doc: u64, pages: Vec<usize>, message: Option<String>) {

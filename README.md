@@ -15,10 +15,10 @@ This project is 100% vibe coded with Claude Code, made for personal use. I am ha
 - **Find** (Ctrl+F): a bar under the toolbar with the match count, previous, next and close. Every match is highlighted, and accented letters match their plain forms.
 - **Select and copy** text across pages, with Ctrl+C or the Copy bar. Ctrl+A selects the current page.
 - **Links** inside the PDF: web and mail addresses open in your browser, page links jump there. Alt+Left and Alt+Right go back and forward.
-- **Annotation tools**: highlight, underline or strike through selected text (five colors), draw freehand or as a rectangle, ellipse, line or arrow (five colors, three thicknesses) and erase. Right-click a page and choose Add a note here for a sticky note; click its icon later to read, change or delete it. The Annotations tab in the side panel lists everything added; click one to jump to it, or remove it from there. Changes live in memory and show as a dot on the tab; Save (Ctrl+S) writes them into the file itself and keeps the earlier version once as "name (backup).pdf"; Save a copy (Ctrl+Shift+S) writes a new PDF instead. Closing a tab with changes asks first.
+- **Annotation tools**: highlight, underline or strike through selected text (five colors), draw freehand or as a rectangle, ellipse, line or arrow (five colors, three thicknesses) and erase. Right-click a page and choose Add a note here for a sticky note; the note is a speech-bubble icon you can drag; click it to read, change or delete it. Click a drawing or shape near its edge to pick it: drag to move it, pull a corner to resize it, press Delete to remove it. The Annotations tab in the side panel lists everything added; click one to jump to it, or remove it from there. Changes live in memory and show as a dot on the tab; Save (Ctrl+S) writes them into the file itself and keeps the earlier version once as "name (backup).pdf"; Save a copy (Ctrl+Shift+S) writes a new PDF instead. Closing a tab with changes asks first.
 - **Read aloud** speaks the selected text or the current page with the Windows voice. **Translate** opens the selected text in a translation page in your browser, in the language Windows is set to.
 - **Pinned tabs**: right-click a tab and choose Pin tab. Pinned tabs sit first as icons only, cannot be closed by accident with the middle button, and come back pinned the next time you start.
-- **Auto-scroll**: turn it on in View options. The page moves down by itself; a small bar at the bottom changes the speed (eight steps) or stops it, and Esc stops it too. It stops by itself at the end of the document.
+- **Auto-scroll**: turn it on in View options or with Ctrl+Shift+A (it switches the view to vertical scrolling and single pages, and says so). The page moves down by itself; a small bar at the bottom changes the speed (eight steps) or stops it, and Esc stops it too. It stops by itself at the end of the document.
 - **Zoom to area**: pick it in View options (or hold Ctrl and drag), then drag a rectangle on the page; the view zooms to fill the window with it.
 - **Side panel** with thumbnails and the document outline. Drag its edge to resize it.
 - **Page bookmarks** with a ribbon on the page and its thumbnail, a list on Home, and Ctrl+B.
@@ -52,7 +52,7 @@ Ideas, not promises. The first group is what is known to be missing.
 
 **Annotation**
 - Undo and redo (Ctrl+Z) for highlights, drawings and text. Open question: where the buttons go in the toolbar.
-- Move and resize what was added (highlights, drawings, shapes, notes).
+- Move and resize highlights, underlines and strikethroughs (they stay tied to the text for now).
 - Pen pressure and palm rejection on tablets.
 
 **Reading**

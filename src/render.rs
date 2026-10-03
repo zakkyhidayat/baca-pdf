@@ -118,6 +118,7 @@ pub enum EditJob {
     SaveOriginal { doc: u64, path: PathBuf, token: u64 },
     ListAnnotations { doc: u64 },
     SetNote { doc: u64, page: usize, index: usize, text: String },
+    SetBounds { doc: u64, page: usize, index: usize, rect: [f32; 4] },
     Note { doc: u64, page: usize, turns: u8, point: [f32; 2], text: String },
     DeleteAnnotation { doc: u64, page: usize, index: usize },
 }
@@ -134,6 +135,7 @@ impl EditJob {
             | EditJob::SaveOriginal { doc, .. }
             | EditJob::ListAnnotations { doc }
             | EditJob::SetNote { doc, .. }
+            | EditJob::SetBounds { doc, .. }
             | EditJob::Note { doc, .. }
             | EditJob::DeleteAnnotation { doc, .. } => *doc,
         }
@@ -463,6 +465,10 @@ fn worker(inbox: Arc<(Mutex<Inbox>, Condvar)>, deliver: impl Fn(Event)) {
                     }
                     EditJob::SetNote { page, index, text, .. } => {
                         let (pages, message) = split(set_note(document, page, index, &text).map(|p| vec![p]));
+                        deliver(Event::Annotated { doc, pages, message });
+                    }
+                    EditJob::SetBounds { page, index, rect, .. } => {
+                        let (pages, message) = split(set_bounds(document, page, index, rect).map(|p| vec![p]));
                         deliver(Event::Annotated { doc, pages, message });
                     }
                     EditJob::ListAnnotations { .. } => deliver(Event::AnnotationList { doc, rows: list_annotations(document) }),
@@ -864,7 +870,13 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
                 PdfPageAnnotationType::Highlight => "Highlight",
                 PdfPageAnnotationType::Underline => "Underline",
                 PdfPageAnnotationType::Strikeout => "Strikethrough",
-                PdfPageAnnotationType::Ink => "Drawing",
+                PdfPageAnnotationType::Ink => {
+                    if annotation.contents().is_some_and(|c| !c.trim().is_empty()) {
+                        "Note"
+                    } else {
+                        "Drawing"
+                    }
+                }
                 PdfPageAnnotationType::FreeText => "Text",
                 PdfPageAnnotationType::Text => "Note",
                 PdfPageAnnotationType::Square | PdfPageAnnotationType::Circle | PdfPageAnnotationType::Line => "Shape",
@@ -897,7 +909,7 @@ fn list_annotations(document: &PdfDocument) -> Vec<AnnotRow> {
     rows
 }
 
-/// A sticky note: a small yellow icon at the point, with the text as its contents.
+/// A sticky note: a small speech bubble drawn into an ink annotation, with the text as its contents.
 fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], text: &str) -> Result<usize, String> {
     if turns % 4 != 0 {
         return Err("Turn the page back upright to add a note.".into());
@@ -908,11 +920,51 @@ fn edit_note(document: &PdfDocument, index: usize, turns: u8, point: [f32; 2], t
         .pixels_to_points((point[0] * vw) as i32, (point[1] * vh) as i32, &config)
         .map_err(|e| describe(&e))?;
     let (x, y) = (x.value, y.value);
-    let mut annotation = page.annotations_mut().create_text_annotation(text).map_err(|e| describe(&e))?;
+    let mut annotation = page.annotations_mut().create_ink_annotation().map_err(|e| describe(&e))?;
     annotation
         .set_bounds(PdfRect::new(PdfPoints::new(y - 24.0), PdfPoints::new(x), PdfPoints::new(y), PdfPoints::new(x + 24.0)))
         .map_err(|e| describe(&e))?;
-    annotation.set_stroke_color(pdf_color([255, 214, 10])).map_err(|e| describe(&e))?;
+    annotation.set_contents(text).map_err(|e| describe(&e))?;
+    let ink = pdf_color([92, 72, 0]);
+    let fill = pdf_color([255, 214, 10]);
+    let pt = |v: f32| PdfPoints::new(v);
+    // The tail first, then the round body over its top, then two lines of "text".
+    let mut tail = PdfPagePathObject::new(document, pt(x + 6.0), pt(y - 16.0), Some(ink), Some(pt(1.2)), Some(fill)).map_err(|e| describe(&e))?;
+    tail.line_to(pt(x + 4.0), pt(y - 23.0)).map_err(|e| describe(&e))?;
+    tail.line_to(pt(x + 12.0), pt(y - 18.0)).map_err(|e| describe(&e))?;
+    tail.close_path().map_err(|e| describe(&e))?;
+    annotation.objects_mut().add_path_object(tail).map_err(|e| describe(&e))?;
+    let body = PdfPagePathObject::new_ellipse(
+        document,
+        PdfRect::new(pt(y - 20.0), pt(x + 1.0), pt(y - 1.0), pt(x + 23.0)),
+        Some(ink),
+        Some(pt(1.2)),
+        Some(fill),
+    )
+    .map_err(|e| describe(&e))?;
+    annotation.objects_mut().add_path_object(body).map_err(|e| describe(&e))?;
+    for (dy, len) in [(7.0, 12.0), (11.0, 8.0)] {
+        annotation
+            .objects_mut()
+            .create_path_object_line(pt(x + 6.0), pt(y - 4.0 - dy + 3.0), pt(x + 6.0 + len), pt(y - 4.0 - dy + 3.0), ink, pt(1.4))
+            .map_err(|e| describe(&e))?;
+    }
+    Ok(index)
+}
+
+/// Moves or resizes an annotation to the rectangle given as fractions of the page (left, top, right, bottom).
+fn set_bounds(document: &PdfDocument, index: usize, annotation: usize, rect: [f32; 4]) -> Result<usize, String> {
+    let mut page = document.pages().get(index as _).map_err(|e| describe(&e))?;
+    let (w, h) = (page.width().value, page.height().value);
+    let mut found = page.annotations_mut().get(annotation).map_err(|e| describe(&e))?;
+    found
+        .set_bounds(PdfRect::new(
+            PdfPoints::new((1.0 - rect[3]) * h),
+            PdfPoints::new(rect[0] * w),
+            PdfPoints::new((1.0 - rect[1]) * h),
+            PdfPoints::new(rect[2] * w),
+        ))
+        .map_err(|e| describe(&e))?;
     Ok(index)
 }
 

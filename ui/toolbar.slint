@@ -707,9 +707,10 @@ export component Toolbar inherits Rectangle {
                         MenuItem {
                             glyph: "\u{E768}";
                             label: "Auto-scroll";
+                            hint: "Ctrl+Shift+A";
                             checkable: true;
                             checked: Bridge.auto-scroll;
-                            clicked => { Bridge.auto-scroll = !Bridge.auto-scroll; }
+                            clicked => { Bridge.toggle-auto-scroll(); }
                         }
                         MenuRule { }
                         Rectangle {
