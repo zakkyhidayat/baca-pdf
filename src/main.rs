@@ -305,7 +305,10 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Tabs and Home
     b.on_open_file(|| {
-        if let Some(path) = platform::pick_pdf() {
+        // The folder of the file opened last, so the dialog starts where the reader left off.
+        let mut start = None;
+        with_viewer(|viewer, _| start = viewer.recents.first().and_then(|r| r.path.parent().map(|p| p.to_path_buf())));
+        if let Some(path) = platform::pick_pdf(start.as_deref()) {
             with_viewer(|viewer, ui| viewer.open_path(ui, path));
         }
     });
@@ -641,6 +644,10 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     WINDOW.with(|w| *w.borrow_mut() = Some(ui.as_weak()));
     titlebar::on_settings_change(on_settings_change);
+    platform::register_file_type();
+    titlebar::on_navigate(|step| {
+        let _ = slint::invoke_from_event_loop(move || with_viewer(|viewer, ui| viewer.history_step(ui, step)));
+    });
     titlebar::on_open_files(|files| {
         let _ = slint::invoke_from_event_loop(move || {
             with_viewer(|viewer, ui| {

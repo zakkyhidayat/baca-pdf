@@ -32,7 +32,7 @@ pub fn prefers_touch() -> bool {
     unsafe { GetSystemMetrics(SM_MAXIMUMTOUCHES) > 0 && GetSystemMetrics(SM_CONVERTIBLESLATEMODE) == 0 }
 }
 
-pub fn pick_pdf() -> Option<PathBuf> {
+pub fn pick_pdf(start: Option<&std::path::Path>) -> Option<PathBuf> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
@@ -42,6 +42,13 @@ pub fn pick_pdf() -> Option<PathBuf> {
         ];
         dialog.SetFileTypes(&filters).ok()?;
         dialog.SetTitle(w!("Open PDF")).ok()?;
+        if let Some(folder) = start {
+            let text = windows::core::HSTRING::from(folder.to_string_lossy().as_ref());
+            let made: windows::core::Result<windows::Win32::UI::Shell::IShellItem> = windows::Win32::UI::Shell::SHCreateItemFromParsingName(&text, None);
+            if let Ok(item) = made {
+                let _ = dialog.SetFolder(&item);
+            }
+        }
         let options = dialog.GetOptions().ok()?;
         dialog.SetOptions(options | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
         dialog.Show(Some(GetActiveWindow())).ok()?;
@@ -300,4 +307,36 @@ pub fn system_language() -> String {
     let name = String::from_utf16_lossy(&buffer[..(n as usize).saturating_sub(1)]);
     let code = name.split('-').next().unwrap_or("en");
     if code.is_empty() { "en".into() } else { code.to_ascii_lowercase() }
+}
+
+fn set_value(key: &str, name: &str, value: &str) {
+    use windows::core::HSTRING;
+    use windows::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+    let key = HSTRING::from(key);
+    let name = HSTRING::from(name);
+    let data: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let _ = RegSetKeyValueW(HKEY_CURRENT_USER, &key, if name.is_empty() { windows::core::PCWSTR::null() } else { windows::core::PCWSTR(name.as_ptr()) }, REG_SZ.0, Some(data.as_ptr() as *const _), (data.len() * 2) as u32);
+    }
+}
+
+/// Lists the program among the ones Windows offers for .pdf files, for this user only. Making it the
+/// default is still the user's choice in Windows Settings.
+pub fn register_file_type() {
+    if std::env::var_os("BACA_DATA_DIR").is_some() {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Some(file) = exe.file_name().map(|f| f.to_string_lossy().into_owned()) else { return };
+    let exe = exe.to_string_lossy().into_owned();
+    let command = format!("\"{exe}\" \"%1\"");
+    let class = "Software\\Classes\\BacaPDF.Document";
+    set_value(class, "", "PDF document");
+    set_value(&format!("{class}\\DefaultIcon"), "", &format!("\"{exe}\",0"));
+    set_value(&format!("{class}\\shell\\open\\command"), "", &command);
+    set_value("Software\\Classes\\.pdf\\OpenWithProgids", "BacaPDF.Document", "");
+    let app = format!("Software\\Classes\\Applications\\{file}");
+    set_value(&app, "FriendlyAppName", "Baca PDF");
+    set_value(&format!("{app}\\shell\\open\\command"), "", &command);
+    set_value(&format!("{app}\\SupportedTypes"), ".pdf", "");
 }

@@ -13,13 +13,14 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
-use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+use windows::Win32::System::Ole::RevokeDragDrop;
+use windows::Win32::UI::Shell::{DefSubclassProc, DragAcceptFiles, DragFinish, DragQueryFileW, SetWindowSubclass, HDROP};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumThreadWindows, GetSystemMetrics, GetWindowLongW, LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON,
     LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON, IsIconic, SetForegroundWindow, SetPropW, GetWindowRect, IsWindowVisible, IsZoomed, SetWindowPos,
     ShowWindow, GWL_STYLE, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTMAXBUTTON, HTTOP, NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER,
     SM_CYFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE,
-    WM_COPYDATA, WM_DPICHANGED, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
+    WM_APPCOMMAND, WM_COPYDATA, WM_DPICHANGED, WM_DROPFILES, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_SIZE,
     WS_CAPTION,
 };
 
@@ -77,6 +78,10 @@ pub fn install(on_state: fn(bool, bool, bool)) -> bool {
         // Lets a second launch find this window and hand its files over.
         let _ = SetPropW(h, crate::single::PROP, Some(HANDLE(1 as *mut _)));
         set_icons(h);
+        // The windowing layer registers its own drop target that ignores files; replace it with the
+        // plain WM_DROPFILES kind, which is enough to open files.
+        let _ = RevokeDragDrop(h);
+        DragAcceptFiles(h, true.into());
         // Makes Windows ask WM_NCCALCSIZE again, now answered by `subclass`.
         let _ = SetWindowPos(h, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
     }
@@ -114,6 +119,15 @@ fn bring_to_front(h: HWND) {
             let _ = ShowWindow(h, SW_RESTORE);
         }
         let _ = SetForegroundWindow(h);
+    }
+}
+
+static mut NAV_CALLBACK: Option<fn(i32)> = None;
+
+/// `on_nav` runs with -1 or 1 for the mouse's back and forward buttons.
+pub fn on_navigate(on_nav: fn(i32)) {
+    unsafe {
+        NAV_CALLBACK = Some(on_nav);
     }
 }
 
@@ -198,6 +212,30 @@ unsafe extern "system" fn subclass(h: HWND, msg: u32, wparam: WPARAM, lparam: LP
                     if let Some(open) = OPEN_CALLBACK {
                         open(files);
                     }
+                    return LRESULT(1);
+                }
+            }
+            WM_DROPFILES => {
+                let drop = HDROP(wparam.0 as *mut _);
+                let count = DragQueryFileW(drop, u32::MAX, None);
+                let mut files = Vec::new();
+                for i in 0..count {
+                    let len = DragQueryFileW(drop, i, None) as usize;
+                    let mut buffer = vec![0u16; len + 1];
+                    let n = DragQueryFileW(drop, i, Some(&mut buffer)) as usize;
+                    files.push(std::path::PathBuf::from(String::from_utf16_lossy(&buffer[..n])));
+                }
+                DragFinish(drop);
+                if let Some(open) = OPEN_CALLBACK {
+                    open(files);
+                }
+                return LRESULT(0);
+            }
+            WM_APPCOMMAND => {
+                // The side buttons of a mouse arrive as the browser back and forward commands.
+                let command = ((lparam.0 >> 16) & 0x0FFF) as i32;
+                if let (1 | 2, Some(nav)) = (command, NAV_CALLBACK) {
+                    nav(if command == 1 { -1 } else { 1 });
                     return LRESULT(1);
                 }
             }
