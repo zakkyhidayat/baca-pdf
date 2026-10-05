@@ -1,0 +1,438 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Everything the window shows and every command it sends, in one place shared by Rust and all parts
+// of the interface.
+
+// A search hit (kind 0), the current hit (1) or selected text (2), relative to its page.
+export struct Mark {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    kind: int,
+}
+
+export struct PageView {
+    page: int,
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    image: image,
+    // Sharp render of the visible part, positioned relative to the page.
+    detail: image,
+    dx: length,
+    dy: length,
+    dw: length,
+    dh: length,
+    marks: [Mark],
+}
+
+export struct ThumbView {
+    page: int,
+    y: length,
+    width: length,
+    height: length,
+    image: image,
+    current: bool,
+}
+
+// `page` is 1-based; 0 means the entry points nowhere.
+export struct OutlineRow {
+    title: string,
+    depth: int,
+    page: int,
+}
+
+export struct TabInfo {
+    title: string,
+    path: string,
+    busy: bool,
+    failed: bool,
+    favorite: bool,
+    pinned: bool,
+}
+
+export struct RecentItem {
+    name: string,
+    folder: string,
+    when: string,
+    page: int,
+    favorite: bool,
+    missing: bool,
+}
+
+// A file with bookmarked pages, listed on Home.
+export struct BookmarkFile {
+    name: string,
+    pages: [int],
+}
+
+// A signature drawn before, kept as a picture.
+export struct SavedSignature {
+    image: image,
+    path: string,
+}
+
+// A place on the page where a form can be filled in, in the scrolled area's coordinates.
+export struct FieldBox {
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+}
+
+// One highlight, drawing or note in the annotation list.
+export struct AnnotationRow {
+    page: int,
+    index: int,
+    kind: string,
+    preview: string,
+    color: color,
+    fy: float,
+    info: string,
+    recolor: bool,
+}
+
+export struct PropRow {
+    label: string,
+    value: string,
+}
+
+// `empty` means the Home screen is showing.
+export enum DocState { empty, loading, ready, failed }
+
+export global Bridge {
+    // Document view
+    in property <DocState> state: DocState.empty;
+    in property <string> doc-title;
+    in property <string> error-text;
+    in property <bool> needs-password;
+    in property <bool> password-wrong;
+    in property <int> page-count;
+    in property <int> current-page;
+    in property <int> zoom-percent: 100;
+    // pdf.js zoom choices: 0 automatic, 1 actual size, 2 page fit, 3 page width, 4 a percentage.
+    in property <int> zoom-mode;
+    in property <bool> can-zoom-in: true;
+    in property <bool> can-zoom-out: true;
+    in property <[PageView]> pages;
+    in property <length> content-width;
+    in property <length> content-height;
+    // Where the pointer is over the pages, counted from the top left of the page area.
+    // Where the selected text sits in the window: the right end of its last line and the top and
+    // bottom of the selection, which the Copy bar goes beside.
+    in property <length> copy-x;
+    in property <length> copy-top;
+    in property <length> copy-bottom;
+    in-out property <length> pointer-x;
+    in-out property <length> pointer-y;
+    in-out property <length> view-x;
+    in-out property <length> view-y;
+    in-out property <length> viewport-width;
+    in-out property <length> viewport-height;
+    // 0 vertical, 1 horizontal, 2 wrapped, 3 one page at a time.
+    in property <int> scroll-mode;
+    // 0 single pages, 1 two pages with odd on the left, 2 two pages with even on the left.
+    in property <int> spread-mode;
+    in-out property <bool> hand-tool;
+    // 0 normal, 1 dark, 2 sepia.
+    in property <int> page-tone;
+    in property <bool> has-selection;
+    in property <bool> bookmarked;
+    in property <[int]> bookmark-pages;
+
+    // Side panel
+    in-out property <bool> sidebar-open;
+    // 0 thumbnails, 1 table of contents.
+    in-out property <int> sidebar-tab;
+    in property <[ThumbView]> thumbs;
+    in property <[OutlineRow]> outline;
+    in property <length> thumb-content-height;
+    // The thumbnails of the bookmarked pages, shown in the third tab of the side panel.
+    in property <[ThumbView]> mark-thumbs;
+    in property <length> mark-content-height;
+    // The page under the pointer when the page menu was opened, and whether it is bookmarked.
+    in-out property <int> menu-page;
+    in property <bool> menu-bookmarked;
+    in-out property <length> thumb-view-y;
+    in-out property <length> thumb-viewport-height;
+
+    // Find
+    in-out property <bool> find-open;
+    in-out property <string> find-text;
+    in property <string> find-status;
+    in property <bool> find-has-hits;
+    in property <bool> find-not-found;
+    in property <int> find-current;
+    in property <int> find-total;
+    in property <bool> find-more;
+    in-out property <length> sidebar-width: 200px;
+    // Set from the window size by the program: narrow windows show the side panel as a drawer.
+    in property <bool> drawer;
+    in-out property <bool> match-case;
+    in-out property <bool> whole-words;
+    in-out property <bool> match-diacritics;
+    in-out property <bool> highlight-all: true;
+    // The pointer tool: 0 selects text, 1 highlights, 2 draws, 3 erases, 4 adds text.
+    in-out property <int> tool;
+    in-out property <int> highlight-color;
+    // 0 highlight, 1 underline, 2 strikethrough.
+    in-out property <int> mark-style;
+    in-out property <int> draw-color;
+    in-out property <int> draw-width: 1;
+    out property <[color]> highlight-colors: [#ffe94d, #7ee787, #66d9ef, #ff8fd0, #ffb454];
+    out property <[string]> highlight-names: ["Yellow", "Green", "Cyan", "Pink", "Orange"];
+    out property <[color]> draw-colors: [#e81123, #1b1b1b, #0063b1, #10893e, #ff8c00];
+    out property <[string]> draw-names: ["Red", "Black", "Blue", "Green", "Orange"];
+    out property <[length]> draw-widths: [1.5px, 3px, 6px];
+    out property <[string]> draw-width-names: ["Thin", "Medium", "Thick"];
+    // The line being drawn, as path commands in page-area coordinates.
+    in property <string> stroke-path;
+    in property <length> stroke-width: 2px;
+    in property <length> stroke-x;
+    in property <length> stroke-y;
+    in property <length> stroke-w;
+    in property <length> stroke-h;
+    in property <bool> text-open;
+    in property <length> text-x;
+    in property <length> text-y;
+    in property <bool> speaking;
+    in property <bool> confirm-open;
+    in property <string> confirm-text;
+
+    // Tabs and Home
+    in property <[TabInfo]> tabs;
+    // -1 while Home is showing.
+    in property <int> active-tab: -1;
+    in property <[RecentItem]> recents;
+    in property <[RecentItem]> favorites;
+    in property <[BookmarkFile]> bookmark-files;
+    in property <bool> restore-tabs;
+    in property <string> author;
+    in property <[FieldBox]> field-boxes;
+    callback set-author(string);
+    in property <bool> auto-reload: true;
+    // 0 automatic, 1 page fit, 2 page width, 3 actual size.
+    in property <int> default-zoom;
+    in property <int> print-scale;
+    in property <string> version;
+
+    // Window
+    in property <bool> fullscreen;
+    in property <bool> is-maximized;
+    in property <bool> max-hover;
+    in property <bool> max-pressed;
+    in property <bool> active-window: true;
+    in-out property <length> strip-height;
+    in-out property <length> drag-from;
+    in property <bool> drop-hover;
+
+    // Icons, decoded from ui/img by Rust.
+    in property <image> app-mark;
+    in property <image> file-icon;
+    in property <image> app-icon;
+
+    // Dialogs and notices
+    in property <[PropRow]> properties;
+    in-out property <bool> properties-open;
+    in-out property <bool> shortcuts-open;
+    in-out property <bool> about-open;
+    in-out property <string> notice;
+
+    callback open-file();
+    callback select-tab(int);
+    callback close-tab(int);
+    callback close-other-tabs(int);
+    callback close-active-tab();
+    callback cycle-tab(int);
+    callback tab-favorite(int);
+    callback tab-pin(int);
+    // How many tabs at the left are pinned.
+    in-out property <int> pinned-count;
+    callback tab-copy-path(int);
+    callback tab-show-in-folder(int);
+    callback open-recent(int);
+    callback open-recent-background(int);
+    callback open-favorite-background(int);
+    callback recent-favorite(int);
+    callback recent-remove(int);
+    callback recent-copy-path(int);
+    callback recent-show-in-folder(int);
+    callback clear-recents();
+    callback open-favorite(int);
+    callback favorite-remove(int);
+    callback open-bookmark(int, int);
+    callback set-theme(int);
+    callback toggle-restore();
+    callback toggle-reload();
+    callback set-default-zoom(int);
+    callback set-print-scale(int);
+    callback open-url(string);
+    callback open-error-log();
+
+    callback viewport-changed();
+    callback zoom-step(int);
+    callback set-zoom(int, float);
+    // wheel delta in logical px, then the anchor in viewport coordinates
+    callback zoom-by(float, length, length);
+    callback zoom-toggle(length, length);
+    // While a smooth zoom runs, zoom-frame is called once per frame with the animation clock in ms.
+    in property <bool> zoom-running;
+    callback zoom-frame(float);
+    callback pinch-started();
+    callback pinch-updated(float, length, length);
+    callback pinch-ended();
+    callback go-to-page(string);
+    // 0-based page
+    callback go-page(int);
+    callback page-step(int);
+    callback scroll-by(length);
+    callback scroll-wheel(length) -> bool;
+    callback scroll-to-edge(bool);
+    callback rotate(int);
+    callback set-scroll-mode(int);
+    callback set-spread-mode(int);
+    callback set-tone(int);
+    callback thumbs-changed();
+    callback sidebar-toggled();
+    callback find-changed(string);
+    callback find-step(int);
+    callback find-options();
+    callback find-closed();
+    // phase 0 press, 1 drag; position in content coordinates
+    callback select-at(int, length, length);
+    callback submit-password(string);
+    callback link-click(length, length);
+    callback move-tab(int, int);
+    callback move-tab-by(int);
+    callback reopen-closed-tab();
+    callback page-menu-prepare(length, length);
+    callback thumb-menu-prepare(int);
+    callback toggle-bookmark-page(int);
+    callback tool-changed();
+    callback annotate-selection();
+    callback stroke-begin(length, length);
+    callback stroke-point(length, length);
+    callback stroke-end();
+    callback erase-at(length, length);
+    callback text-at(length, length);
+    callback text-commit(string);
+    callback text-cancel();
+    callback read-aloud();
+    callback translate();
+    callback confirm-choice(int);
+    callback history-step(int);
+    callback select-page();
+    callback clear-selection();
+    callback copy-selection() -> bool;
+    callback toggle-bookmark();
+    callback clear-bookmarks();
+    callback show-properties();
+    callback print();
+    // Zoom to a rectangle dragged on the page: the mode is picked in View options or by dragging with Ctrl held.
+    in-out property <bool> zoom-area;
+    in-out property <bool> zr-on;
+    in-out property <length> zr-x;
+    in-out property <length> zr-y;
+    in-out property <length> zr-w;
+    in-out property <length> zr-h;
+    callback zoom-to-rect(length, length, length, length);
+    in-out property <[AnnotationRow]> annotations;
+    callback recolor-annotation(int, int, int);
+    callback go-annotation(int, float);
+    callback delete-annotation(int, int);
+    // 0 pen, 1 rectangle, 2 ellipse, 3 line, 4 arrow.
+    in-out property <int> draw-shape;
+    callback note-here();
+    // A text field of the form being filled in, over the page.
+    in-out property <bool> field-edit-open;
+    in-out property <string> field-edit-text;
+    in-out property <length> field-edit-x;
+    in-out property <length> field-edit-y;
+    in-out property <length> field-edit-w;
+    in-out property <length> field-edit-h;
+    in-out property <bool> field-edit-multiline;
+    // The entries of a drop-down or list field, shown under it to pick one.
+    in-out property <bool> field-choices-open;
+    in property <[string]> field-choices;
+    in-out property <int> field-choice-selected: -1;
+    callback field-choose(int);
+    callback field-commit(string);
+    callback field-cancel();
+    callback ocr-page();
+    callback ocr-all();
+    callback text-here();
+    callback image-here();
+    callback sign-here();
+    callback sign-place(string);
+    callback sign-pen(int, float, float);
+    callback sign-clear();
+    callback sign-place-drawn();
+    callback sign-use-saved(string);
+    in-out property <bool> sign-draw;
+    in-out property <string> sign-path;
+    in property <[SavedSignature]> sign-saved;
+    // Text placed on a page: its size and color are chosen in the box it is typed in.
+    in-out property <bool> text-note;
+    in-out property <int> text-size: 1;
+    out property <[int]> text-sizes: [10, 12, 14, 18, 24, 32, 48];
+    in-out property <int> text-color: 1;
+    // The sign dialog.
+    in-out property <bool> sign-open;
+    in-out property <string> sign-name;
+    in-out property <int> sign-font;
+    in-out property <int> sign-color;
+    out property <[string]> sign-fonts: ["Segoe Script", "Ink Free", "Gabriola"];
+    out property <[color]> sign-colors: [#1b1b1b, #0063b1, #1a237e];
+    out property <[string]> sign-color-names: ["Black", "Blue", "Dark blue"];
+    // Auto-scroll: the page moves down by itself; the speed is a step from 1 to 8.
+    in-out property <bool> auto-scroll;
+    in-out property <int> auto-speed: 3;
+    // Editing a sticky note: clicking its icon on the page opens this.
+    in-out property <bool> note-edit-open;
+    in-out property <string> note-edit-text;
+    in-out property <string> note-edit-info;
+    in-out property <length> note-edit-w;
+    // For added text: its size (an entry of text-sizes) and color (an entry of draw-colors, -1 if it is none of them).
+    in-out property <bool> note-edit-styled;
+    in-out property <int> note-edit-size;
+    in-out property <int> note-edit-color;
+    callback note-edit-save(string);
+    callback note-edit-delete();
+    callback note-edit-cancel();
+    // The annotation picked on the page (a drawing, shape or note), in document coordinates.
+    in-out property <bool> sel-on;
+    in-out property <length> sel-x;
+    in-out property <length> sel-y;
+    in-out property <length> sel-w;
+    in-out property <length> sel-h;
+    in-out property <bool> sel-resizable;
+    in-out property <bool> sel-editable;
+    callback annot-edit();
+    // 0 when nothing was picked, 1 to move it, 2 to 5 to pull a corner.
+    callback annot-press(length, length) -> int;
+    callback annot-drag(length, length);
+    callback annot-release();
+    callback annot-delete();
+    callback annot-deselect();
+    in-out property <length> note-edit-x;
+    in-out property <length> note-edit-y;
+    in-out property <length> note-edit-top;
+    callback toggle-auto-scroll();
+    in-out property <bool> can-undo;
+    in-out property <bool> can-redo;
+    in-out property <string> undo-label;
+    in-out property <string> redo-label;
+    callback undo();
+    callback redo();
+    callback save-flat-copy();
+    callback save();
+    callback save-copy();
+
+    callback toggle-fullscreen();
+    callback minimize-window();
+    callback toggle-maximize();
+    callback close-window();
+    callback caption-metrics(length, length);
+}

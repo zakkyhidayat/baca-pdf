@@ -1,0 +1,574 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// The title bar: the Home button, the tabs, the + button and the window buttons.
+
+import { Spinner } from "std-widgets.slint";
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { IconButton, MenuItem, MenuRule, Flyout } from "controls.slint";
+import { Bridge, TabInfo } from "bridge.slint";
+
+export global TitleMetrics {
+    out property <length> caption-button: 46px;
+}
+
+// The app icon is the Home button: the mark turns into a Home glyph on hover, and stays one while
+// Home is open over tabs.
+component AppHome {
+    in property <bool> on;
+    callback clicked;
+
+    width: 32px;
+    // Level with the white of the front tab, under its hairline, and clear of the toolbar below.
+    height: Metrics.tab-height - 6px;
+    accessible-role: button;
+    accessible-label: "Home (Ctrl+T)";
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+    property <bool> lit: area.has-hover || focus.has-focus || root.on;
+
+    Rectangle {
+        // A chip a shade darker than the strip, darker still under the pointer.
+        border-radius: 8px;
+        background: (area.has-hover || focus.has-focus) ? Theme.chip-hover : Theme.chip;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Image {
+        width: 20px;
+        height: 20px;
+        source: Bridge.app-mark;
+        opacity: root.lit ? 0 : 1;
+        animate opacity { duration: 120ms; easing: ease-out; }
+        accessible-role: none;
+    }
+    Glyph {
+        // Home
+        text: "\u{E80F}";
+        opacity: root.lit ? 1 : 0;
+        animate opacity { duration: 120ms; easing: ease-out; }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A tab's outline: rounded at the top, curving out at the bottom on both sides into the toolbar.
+// It spans the tab plus 8px on each side for the curves.
+component TabShape {
+    in property <brush> fill;
+    // The hairline of the front tab, which meets the line along the top of the toolbar.
+    in property <bool> edge;
+    property <float> w: self.width / 1px;
+    property <float> h: self.height / 1px;
+    // The hairline is the rim of a shape 1px larger behind the fill; a stroked path lands off the
+    // fill's edge once Slint scales it. At the ends it is the toolbar's top line.
+    if root.edge: Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.w;
+        viewbox-height: root.h;
+        fill: Theme.tab-edge;
+        commands: "M 0 \{root.h} L 0 \{root.h - 1} A 7 7 0 0 0 7 \{root.h - 8} L 7 8 A 8 8 0 0 1 15 0 L \{root.w - 15} 0 A 8 8 0 0 1 \{root.w - 7} 8 L \{root.w - 7} \{root.h - 8} A 7 7 0 0 0 \{root.w} \{root.h - 1} L \{root.w} \{root.h} Z";
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.w;
+        viewbox-height: root.h;
+        fill: root.fill;
+        commands: "M 0 \{root.h} A 8 8 0 0 0 8 \{root.h - 8} L 8 8 A 7 7 0 0 1 15 1 L \{root.w - 15} 1 A 7 7 0 0 1 \{root.w - 8} 8 L \{root.w - 8} \{root.h - 8} A 8 8 0 0 0 \{root.w} \{root.h} Z";
+    }
+}
+
+component TabItem {
+    in property <TabInfo> info;
+    in property <bool> selected;
+    // A hairline on the left, between two tabs that are not selected.
+    in property <bool> divider;
+    callback activate;
+    callback close;
+    callback menu(length, length);
+    // Dragging: where in the tab it was grabbed, where the pointer is now, and the release.
+    in property <bool> dragging;
+    callback drag-begin(length);
+    callback drag-moved(length);
+    callback drag-ended();
+
+    height: Metrics.tab-height;
+    // The front tab paints over its neighbors, so its curves cut into them.
+    z: root.selected ? 5 : 0;
+    opacity: root.dragging ? 0 : 1;
+    accessible-role: tab;
+    accessible-label: root.info.title;
+    accessible-description: root.info.path;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.activate(); }
+    forward-focus: focus;
+
+    // The front tab takes the toolbar's color, one under the pointer is only tinted, in the same shape.
+    // The curves hang outside the tab, in the room the strip keeps on both sides; the front tab's
+    // covers a hovered neighbor's.
+    if (root.selected || area.has-hover) && !root.dragging: TabShape {
+        x: -8px;
+        width: parent.width + 16px;
+        height: parent.height;
+        fill: root.selected ? Theme.surface : Theme.hover;
+        edge: root.selected;
+    }
+    if focus.has-focus: Rectangle {
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.focus;
+    }
+    Rectangle {
+        visible: root.divider;
+        x: 0;
+        y: 8px;
+        width: 1px;
+        height: parent.height - 16px;
+        background: Theme.divider;
+    }
+    area := TouchArea {
+        property <bool> began;
+        property <bool> far;
+        property <length> down-x;
+        clicked => {
+            if (self.far) { return; }
+            root.activate();
+        }
+        moved => {
+            if (self.pressed) {
+                if (!self.began && abs(self.mouse-x - self.down-x) > 8px) {
+                    self.began = true;
+                    self.far = true;
+                    root.drag-begin(self.down-x);
+                }
+                if (self.began) { root.drag-moved(self.mouse-x); }
+            }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                self.down-x = self.mouse-x;
+                self.began = false;
+                self.far = false;
+            }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && self.began) {
+                self.began = false;
+                root.drag-ended();
+            }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle && !root.info.pinned) {
+                root.close();
+            }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.menu(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    // A pinned tab is only its icon, in the middle.
+    if root.info.pinned && root.info.busy: Spinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        indeterminate: true;
+    }
+    if root.info.pinned && !root.info.busy: Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        source: Bridge.file-icon;
+        opacity: root.info.failed ? 0.4 : 1;
+        accessible-role: none;
+    }
+    if !root.info.pinned: HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 4px;
+        spacing: 4px;
+        if root.info.busy: Spinner {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            indeterminate: true;
+        }
+        if !root.info.busy: Image {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            source: Bridge.file-icon;
+            opacity: root.info.failed ? 0.4 : 1;
+            accessible-role: none;
+        }
+        Text {
+            text: root.info.title;
+            font-size: Metrics.touch ? 15px : 13px;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.text : Theme.text-secondary;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                size: Metrics.touch ? 36px : 28px;
+                // Cancel
+                glyph: "\u{E711}";
+                glyph-size: 12px;
+                label: "Close " + root.info.title + " (Ctrl+W)";
+                clicked => { root.close(); }
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.activate();
+                return accept;
+            }
+            if (event.text == Key.Delete) {
+                root.close();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component CaptionButton {
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> danger;
+    // Set from Rust for the maximize button, whose hover Windows reports instead of Slint.
+    in property <bool> hover-from-system;
+    in property <bool> pressed-from-system;
+    callback clicked;
+
+    width: TitleMetrics.caption-button;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    property <bool> hovered: area.has-hover || root.hover-from-system;
+    property <bool> pressed: area.pressed || root.pressed-from-system;
+
+    Rectangle {
+        background: root.danger
+            ? (root.pressed ? Theme.close-pressed : root.hovered ? Theme.close-hover : transparent)
+            : (root.pressed ? Theme.pressed : root.hovered ? Theme.hover : transparent);
+    }
+    Glyph {
+        text: root.glyph;
+        font-size: 10px;
+        color: root.danger && root.hovered ? white : Bridge.active-window ? Theme.text : Theme.text-secondary;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    background: Theme.strip;
+    height: Metrics.title-height;
+
+    property <int> count: Bridge.tabs.length;
+    property <length> caption-width: (Bridge.fullscreen ? 2 : 4) * TitleMetrics.caption-button;
+    property <length> home-end: 4px + 32px + 4px;
+    property <length> plus-width: 36px;
+    // The window must always keep a place to be grabbed.
+    property <length> drag-min: 32px;
+    property <length> scroll-buttons: root.overflowing ? 2 * 28px : 0px;
+    property <length> room: max(0px, root.width - root.home-end - root.plus-width - root.drag-min - root.caption-width);
+    // Pinned tabs sit first, as icons only; the others share what is left.
+    property <int> pinned: Bridge.pinned-count;
+    property <length> pin-width: 40px;
+    property <length> pinned-width: root.pinned * root.pin-width;
+    property <int> loose: root.count - root.pinned;
+    property <bool> overflowing: root.pinned-width + root.loose * 80px > root.room;
+    property <length> tab-width: root.loose <= 0 ? 220px : clamp((root.room - root.scroll-buttons - root.pinned-width) / root.loose, 80px, 220px);
+    property <length> content-w: root.pinned-width + root.loose * root.tab-width;
+    property <length> strip-width: min(root.content-w, root.room - root.scroll-buttons);
+    property <length> strip-x: root.home-end + (root.overflowing ? 28px : 0px);
+    property <length> plus-x: root.strip-x + root.strip-width + (root.overflowing ? 28px : 0px) + 4px;
+
+    // Everything right of the + button, up to the caption buttons, moves the window.
+    // The values are also kept in Bridge: the program reads them once when it takes over the caption,
+    // and a stale copy there would put the drag area over the tabs.
+    changed height => {
+        Bridge.strip-height = self.height;
+        Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px);
+    }
+    // Dragging a tab: where the pointer is along the strip decides where the tab would land.
+    property <int> drag-index: -1;
+    property <length> drag-grab;
+    property <length> drag-pos;
+    // The place the dragged tab would take, and where every tab sits meanwhile: the ones it passes
+    // step aside to leave that place free.
+    property <int> raw-target: root.drag-pos < root.pinned-width ? floor(root.drag-pos / root.pin-width)
+        : root.pinned + floor((root.drag-pos - root.pinned-width) / root.tab-width);
+    // A pinned tab stays among the pinned ones, and the others among theirs.
+    property <int> target: root.drag-index < root.pinned ? clamp(root.raw-target, 0, root.pinned - 1)
+        : clamp(root.raw-target, root.pinned, root.count - 1);
+    function width-of(i: int) -> length {
+        return i < root.pinned ? root.pin-width : root.tab-width;
+    }
+    function base(i: int) -> length {
+        return i < root.pinned ? i * root.pin-width : root.pinned-width + (i - root.pinned) * root.tab-width;
+    }
+    function slot(i: int) -> length {
+        if (root.drag-index < 0 || i == root.drag-index) {
+            return root.base(i);
+        }
+        if (root.drag-index < root.target && i > root.drag-index && i <= root.target) {
+            return root.base(i) - root.width-of(root.drag-index);
+        }
+        if (root.drag-index > root.target && i >= root.target && i < root.drag-index) {
+            return root.base(i) + root.width-of(root.drag-index);
+        }
+        return root.base(i);
+    }
+    function finish-drag() {
+        Bridge.move-tab(root.drag-index, root.target);
+        root.drag-index = -1;
+    }
+
+    // With more tabs than fit, the front tab is always scrolled into view.
+    property <int> front: Bridge.active-tab;
+    function reveal-front() {
+        if (root.overflowing && root.front >= 0) {
+            if (root.base(root.front) < -strip.content-x) {
+                strip.content-x = -root.base(root.front);
+            } else if (root.base(root.front) + root.width-of(root.front) > -strip.content-x + root.strip-width) {
+                strip.content-x = -(root.base(root.front) + root.width-of(root.front) - root.strip-width);
+            }
+        }
+    }
+    changed front => { root.reveal-front(); }
+    changed count => { root.reveal-front(); }
+    changed room => { root.reveal-front(); }
+    changed plus-x => {
+        Bridge.drag-from = root.plus-x + 32px + 4px;
+        Bridge.caption-metrics(self.height, root.plus-x + 32px + 4px);
+    }
+    init => {
+        Bridge.strip-height = self.height;
+        Bridge.drag-from = root.plus-x + 32px + 4px;
+    }
+
+    // The line along the top of the toolbar, which the front tab covers.
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.tab-edge;
+    }
+
+    AppHome {
+        x: 4px;
+        y: parent.height - Metrics.tab-height + 1px;
+        on: Bridge.active-tab == -1;
+        clicked => { Bridge.select-tab(-1); }
+    }
+
+    if root.overflowing: IconButton {
+        x: root.home-end;
+        y: parent.height - self.height - 4px;
+        size: 28px;
+        // ChevronLeft
+        glyph: "\u{E76B}";
+        glyph-size: 12px;
+        label: "Scroll tabs left";
+        enabled: strip.content-x < 0;
+        clicked => { strip.content-x = min(0px, strip.content-x + 2 * root.tab-width); }
+    }
+
+    // The strip reaches 12px past the tabs on each side, for the curves of the front tab.
+    strip := Flickable {
+        x: root.strip-x - 12px;
+        y: parent.height - Metrics.tab-height;
+        width: root.strip-width + 24px;
+        height: Metrics.tab-height;
+        content-width: root.content-w + 24px;
+        interactive: false;
+        // The tab as it follows the pointer: solid, raised, and the tab it will become.
+        if root.drag-index >= 0: Rectangle {
+            x: 12px + clamp(root.drag-pos - root.drag-grab, 0px, max(0px, root.content-w - root.width-of(root.drag-index)));
+            y: 0;
+            z: 20;
+            width: root.width-of(root.drag-index);
+            height: Metrics.tab-height;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            background: Theme.surface;
+            drop-shadow-blur: 14px;
+            drop-shadow-offset-y: 3px;
+            drop-shadow-color: #00000050;
+            Image {
+                x: 12px;
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+                source: Bridge.file-icon;
+                accessible-role: none;
+            }
+            Text {
+                visible: !Bridge.tabs[root.drag-index].pinned;
+                x: 34px;
+                width: parent.width - 46px;
+                height: parent.height;
+                text: Bridge.tabs[root.drag-index].title;
+                font-size: Metrics.touch ? 15px : 13px;
+                overflow: elide;
+                vertical-alignment: center;
+                color: Theme.text;
+                accessible-role: none;
+            }
+        }
+        for tab[i] in Bridge.tabs: TabItem {
+            x: root.slot(i) + 12px;
+            y: 0;
+            width: root.width-of(i);
+            animate x { duration: 140ms; easing: ease-out; }
+            info: tab;
+            selected: Bridge.active-tab == i;
+            divider: i > 0 && Bridge.active-tab != i && Bridge.active-tab != i - 1;
+            dragging: root.drag-index == i;
+            drag-begin(grab) => {
+                root.drag-grab = grab;
+                root.drag-pos = root.base(i) + grab;
+                root.drag-index = i;
+            }
+            drag-moved(mx) => { root.drag-pos = root.base(i) + mx; }
+            drag-ended => { root.finish-drag(); }
+            activate => { Bridge.select-tab(i); }
+            close => { Bridge.close-tab(i); }
+            menu(mx, my) => {
+                root.menu-index = i;
+                root.menu-favorite = tab.favorite;
+                root.menu-pinned = tab.pinned;
+                root.menu-x = self.x + strip.content-x + strip.x + mx;
+                root.menu-y = strip.y + my;
+                tab-menu.show();
+            }
+        }
+    }
+
+    if root.overflowing: IconButton {
+        x: root.strip-x + root.strip-width;
+        y: parent.height - self.height - 4px;
+        size: 28px;
+        // ChevronRight
+        glyph: "\u{E76C}";
+        glyph-size: 12px;
+        label: "Scroll tabs right";
+        enabled: strip.content-x > root.strip-width - root.content-w;
+        clicked => { strip.content-x = max(root.strip-width - root.content-w, strip.content-x - 2 * root.tab-width); }
+    }
+
+    IconButton {
+        x: root.plus-x;
+        y: parent.height - self.height - 4px;
+        size: Metrics.touch ? 36px : 28px;
+        // Add
+        glyph: "\u{E710}";
+        glyph-size: 12px;
+        label: "Open another PDF (Ctrl+O)";
+        clicked => { Bridge.open-file(); }
+    }
+
+    HorizontalLayout {
+        x: parent.width - self.width;
+        y: 0;
+        width: root.caption-width;
+        height: parent.height;
+        if !Bridge.fullscreen: CaptionButton {
+            // FullScreen
+            glyph: "\u{E740}";
+            label: "Full screen (F11)";
+            clicked => { Bridge.toggle-fullscreen(); }
+        }
+        CaptionButton {
+            // ChromeMinimize
+            glyph: "\u{E921}";
+            label: "Minimize";
+            clicked => { Bridge.minimize-window(); }
+        }
+        if Bridge.fullscreen: CaptionButton {
+            // BackToWindow, where the restore button sits in a window
+            glyph: "\u{E73F}";
+            label: "Exit full screen (F11)";
+            clicked => { Bridge.toggle-fullscreen(); }
+        }
+        if !Bridge.fullscreen: CaptionButton {
+            // ChromeRestore and ChromeMaximize
+            glyph: Bridge.is-maximized ? "\u{E923}" : "\u{E922}";
+            label: Bridge.is-maximized ? "Restore" : "Maximize";
+            hover-from-system: Bridge.max-hover;
+            pressed-from-system: Bridge.max-pressed;
+            clicked => { Bridge.toggle-maximize(); }
+        }
+        if !Bridge.fullscreen: CaptionButton {
+            // ChromeClose
+            glyph: "\u{E8BB}";
+            label: "Close";
+            danger: true;
+            clicked => { Bridge.close-window(); }
+        }
+    }
+
+    property <int> menu-index;
+    property <bool> menu-favorite;
+    property <bool> menu-pinned;
+    property <length> menu-x;
+    property <length> menu-y;
+    tab-menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y;
+        width: 260px;
+        Flyout {
+            VerticalLayout {
+                padding: 4px;
+                MenuItem {
+                    label: root.menu-pinned ? "Unpin tab" : "Pin tab";
+                    clicked => { Bridge.tab-pin(root.menu-index); }
+                }
+                MenuRule { }
+                MenuItem {
+                    label: "Close tab";
+                    hint: "Ctrl+W";
+                    clicked => { Bridge.close-tab(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Close other tabs";
+                    enabled: root.count > 1;
+                    clicked => { Bridge.close-other-tabs(root.menu-index); }
+                }
+                MenuRule { }
+                MenuItem {
+                    label: root.menu-favorite ? "Remove from favorites" : "Add to favorites";
+                    hint: "Ctrl+D";
+                    clicked => { Bridge.tab-favorite(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Copy path";
+                    clicked => { Bridge.tab-copy-path(root.menu-index); }
+                }
+                MenuItem {
+                    label: "Show in folder";
+                    clicked => { Bridge.tab-show-in-folder(root.menu-index); }
+                }
+            }
+        }
+    }
+}

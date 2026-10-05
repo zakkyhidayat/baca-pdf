@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette } from "std-widgets.slint";
+
+// Windows 11 surfaces, the same values the pdf.js version used.
+export global Theme {
+    // 0 follows Windows, 1 light, 2 dark.
+    in-out property <int> choice;
+    in property <bool> system-dark;
+    out property <bool> dark: root.choice == 2 || (root.choice == 0 && root.system-dark);
+
+    out property <color> bar: dark ? #202020 : #f3f3f3;
+    // The tab strip is a light grey behind a white active tab, and the Home button a darker chip on
+    // it, as in Edge.
+    out property <color> strip: dark ? #1c1c1c : #f4f4f4;
+    out property <color> chip: dark ? #2b2b2b : #eaeaea;
+    out property <color> chip-hover: dark ? #353535 : #e0e0e0;
+    // The hairline around the active tab, which runs on along the top of the toolbar.
+    out property <color> tab-edge: dark ? #3a3a3a : #e3e3e3;
+    // Active tab, toolbar, cards and menus: one surface so the tab and the toolbar read as one bar.
+    out property <color> surface: dark ? #2c2c2c : #ffffff;
+    out property <color> body: dark ? #1c1c1c : #e6e6e6;
+    out property <color> sidebar: dark ? #262626 : #f3f3f3;
+    out property <color> text: dark ? #ffffff : #1b1b1b;
+    out property <color> text-secondary: dark ? #c5c5c5 : #5c5c5c;
+    out property <color> text-disabled: #8a8a8a;
+    out property <color> divider: dark ? #3a3a3a : #d9d9d9;
+    out property <color> separator: dark ? #3a3a3a : #e0e0e0;
+    out property <color> toolbar-border: dark ? #1c1c1c : #e5e5e5;
+    out property <color> hover: dark ? #ffffff14 : #0000000f;
+    out property <color> pressed: dark ? #ffffff0d : #0000001a;
+    out property <color> toggled: dark ? #ffffff1f : #0000001a;
+    out property <color> focus: dark ? #ffffff : #000000;
+    out property <color> field: dark ? #2d2d2d : #ffffff;
+    out property <color> field-border: dark ? #8c8c8c : #8a8a8a;
+    out property <color> menu-border: dark ? #3a3a3a : #d9d9d9;
+    out property <color> close-hover: #c42b1c;
+    out property <color> close-pressed: #c83c31;
+    // The Windows accent, as Slint's Fluent palette reads it from Settings.
+    out property <brush> accent: Palette.accent-background;
+    out property <brush> on-accent: Palette.accent-foreground;
+}
+
+// The one tooltip, drawn above everything by the window. A popup window would take the pointer from
+// whatever is under it, which made hover-only buttons flicker.
+export global Tip {
+    in-out property <bool> on;
+    in-out property <string> text;
+    // Where the centre of the tooltip's top edge goes, in window coordinates.
+    in-out property <length> x;
+    in-out property <length> y;
+}
+
+export global Metrics {
+    in-out property <bool> touch;
+    out property <length> title-height: touch ? 48px : 40px;
+    out property <length> tab-height: touch ? 45px : 37px;
+    out property <length> toolbar-height: touch ? 48px : 40px;
+    out property <length> button: touch ? 40px : 32px;
+    out property <length> font: touch ? 15px : 14px;
+}
+
+// Segoe Fluent Icons ships with Windows 11; code points follow its published glyph table.
+export component Glyph inherits Text {
+    font-family: "Segoe Fluent Icons";
+    font-size: 16px;
+    vertical-alignment: center;
+    horizontal-alignment: center;
+    color: Theme.text;
+    accessible-role: none;
+}

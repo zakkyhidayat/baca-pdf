@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="150 90 940 1090" width="110" height="128">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f8fa"/>
+      <stop offset="1" stop-color="#eef0f4"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6a5c"/>
+      <stop offset="0.5" stop-color="#e5352f"/>
+      <stop offset="1" stop-color="#b3191c"/>
+    </linearGradient>
+    <clipPath id="band"><rect x="198" y="517" width="856" height="370" rx="24"/></clipPath>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <path d="M258 133H805L1015 340V1106a26 26 0 0 1-26 26H258a26 26 0 0 1-26-26V159a26 26 0 0 1 26-26z" fill="url(#page)" stroke="#e4e7ec" stroke-width="3"/>
+  <path d="M805 133L1015 340H833a28 28 0 0 1-28-28z" fill="#b9c0cc"/>
+  <g stroke="#b9c0cc" stroke-width="20" stroke-linecap="round">
+    <path d="M318 257H726M318 322H726M318 386H924M318 450H924M318 955H924M318 1029H924"/>
+  </g>
+  <g filter="url(#soft)">
+    <rect x="198" y="517" width="856" height="370" rx="24" fill="url(#base)"/>
+  </g>
+  <g clip-path="url(#band)">
+    <path d="M198 835C400 670 700 560 1054 540V517H198z" fill="#ff8f6b" opacity="0.55"/>
+    <path d="M198 835C420 700 760 600 1054 620V887H198z" fill="#d42a2a" opacity="0.7"/>
+    <path d="M520 887C700 740 880 660 1054 620V887z" fill="#8f1216" opacity="0.65"/>
+  </g>
+  <text x="626" y="803" text-anchor="middle" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-weight="700" font-size="270" fill="#fff">PDF</text>
+</svg>

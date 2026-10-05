@@ -1,0 +1,479 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// The modal dialogs: document properties, keyboard shortcuts, About, Sign, and the question asked
+// before unsaved changes are closed.
+
+import { Theme, Metrics, Glyph } from "theme.slint";
+import { PrimaryButton, SecondaryButton, FieldFrame } from "controls.slint";
+import { Bridge, PropRow } from "bridge.slint";
+
+// A modal card over a dimmed window. Esc or a click outside closes it, and so does a button in its
+// last row: every dialog ends with one, so none has a close button in the corner.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <length> card-width: 460px;
+    callback close;
+
+    background: #0000004d;
+    forward-focus: keys;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close();
+                return accept;
+            }
+            accept
+        }
+    }
+    card := Rectangle {
+        width: min(root.card-width, root.width - 32px);
+        height: min(body.preferred-height, root.height - 32px);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        background: Theme.surface;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.menu-border;
+        drop-shadow-blur: 64px;
+        drop-shadow-offset-y: 32px;
+        drop-shadow-color: #00000047;
+        clip: true;
+        accessible-role: groupbox;
+        accessible-label: root.title;
+        // Clicks on the card stay on it.
+        TouchArea { }
+        // A dialog taller than the window scrolls, so its last row of buttons stays within reach.
+        // Scrolled by the wheel only: a drag must stay a drag, as on the signature pad.
+        Flickable {
+            interactive: false;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                width: parent.width;
+                padding: 24px;
+                padding-top: 20px;
+                spacing: 16px;
+                HorizontalLayout {
+                    Text {
+                        text: root.title;
+                        font-family: "Segoe UI Variable Display";
+                        font-size: 20px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        color: Theme.text;
+                        accessible-role: text;
+                    }
+                }
+                @children
+            }
+        }
+    }
+    init => { keys.focus(); }
+}
+
+export component PropertiesDialog inherits Dialog {
+    title: "Document properties";
+    card-width: 520px;
+    close => { Bridge.properties-open = false; }
+
+    VerticalLayout {
+        spacing: 6px;
+        for row in Bridge.properties: HorizontalLayout {
+            spacing: 16px;
+            Text {
+                width: 150px;
+                text: row.label;
+                color: Theme.text-secondary;
+                accessible-role: none;
+            }
+            Text {
+                text: row.value == "" ? "-" : row.value;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+                color: Theme.text;
+                accessible-role: text;
+                accessible-label: row.label + ": " + (row.value == "" ? "none" : row.value);
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            label: "Close";
+            clicked => { Bridge.properties-open = false; }
+        }
+    }
+}
+
+export component ShortcutsDialog inherits Dialog {
+    title: "Keyboard shortcuts";
+    card-width: 560px;
+    close => { Bridge.shortcuts-open = false; }
+
+    property <[{action: string, keys: string}]> rows: [
+        { action: "Open a PDF", keys: "Ctrl+O" },
+        { action: "Home", keys: "Ctrl+T" },
+        { action: "Close the tab", keys: "Ctrl+W" },
+        { action: "Next or previous tab", keys: "Ctrl+Tab, Ctrl+Shift+Tab" },
+        { action: "Previous or next tab", keys: "Ctrl+PageUp, Ctrl+PageDown" },
+        { action: "Go to tab 1 to 8, or the last tab", keys: "Ctrl+1 to 8, Ctrl+9" },
+        { action: "Move the tab left or right", keys: "Ctrl+Shift+PageUp, PageDown" },
+        { action: "Reopen the tab closed last", keys: "Ctrl+Shift+T" },
+        { action: "Add to or remove from favorites", keys: "Ctrl+D" },
+        { action: "Find in document", keys: "Ctrl+F" },
+        { action: "Next or previous result", keys: "F3, Shift+F3" },
+        { action: "Copy the selected text", keys: "Ctrl+C" },
+        { action: "Select the text on this page", keys: "Ctrl+A" },
+        { action: "Bookmark this page", keys: "Ctrl+B" },
+        { action: "Go to page", keys: "Ctrl+G" },
+        { action: "Next or previous page", keys: "Page Down, Page Up, Space" },
+        { action: "First or last page", keys: "Home, End" },
+        { action: "Zoom in or out", keys: "Ctrl+plus, Ctrl+minus, Ctrl+wheel" },
+        { action: "Fit the width", keys: "Ctrl+0" },
+        { action: "Rotate clockwise or counterclockwise", keys: "R, Shift+R" },
+        { action: "Print", keys: "Ctrl+P" },
+        { action: "Save", keys: "Ctrl+S" },
+        { action: "Save a copy", keys: "Ctrl+Shift+S" },
+        { action: "Auto-scroll", keys: "Ctrl+Shift+A" },
+        { action: "Back and forward after following a link", keys: "Alt+Left, Alt+Right" },
+        { action: "Leave a drawing tool", keys: "Esc" },
+        { action: "Document properties", keys: "Alt+Enter" },
+        { action: "Full screen", keys: "F11" },
+        { action: "This list", keys: "F1" },
+    ];
+
+    VerticalLayout {
+        spacing: 4px;
+        for row in root.rows: HorizontalLayout {
+            spacing: 16px;
+            Text {
+                text: row.action;
+                horizontal-stretch: 1;
+                color: Theme.text;
+            }
+            Text {
+                text: row.keys;
+                color: Theme.text-secondary;
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            label: "Close";
+            clicked => { Bridge.shortcuts-open = false; }
+        }
+    }
+}
+
+export component AboutDialog inherits Dialog {
+    title: "About Baca PDF";
+    close => { Bridge.about-open = false; }
+
+    HorizontalLayout {
+        spacing: 16px;
+        Image {
+            width: 64px;
+            height: 64px;
+            source: Bridge.app-icon;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            spacing: 8px;
+            Text {
+                text: "Version " + Bridge.version;
+                color: Theme.text;
+            }
+            Text {
+                text: "Renders PDFs with PDFium.\nBuilt with Claude Code for personal use.\nLicensed under GPL-3.0-or-later.";
+                wrap: word-wrap;
+                color: Theme.text-secondary;
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            label: "Close";
+            clicked => { Bridge.about-open = false; }
+        }
+    }
+}
+
+// Sign: type a name in a handwriting style, or draw it; signatures drawn before can be used again.
+component ModeButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked;
+    height: Metrics.touch ? 44px : 36px;
+    border-radius: 4px;
+    background: chosen ? Theme.accent : area.has-hover ? Theme.hover : transparent;
+    border-width: chosen ? 0px : 1px;
+    border-color: Theme.divider;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.chosen;
+    accessible-action-default => { root.clicked(); }
+    Text {
+        text: root.label;
+        color: root.chosen ? Theme.on-accent : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SignDialog inherits Dialog {
+    title: "Sign";
+    card-width: 520px;
+    close => { Bridge.sign-open = false; }
+
+    VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 6px;
+            ModeButton {
+                label: "Type";
+                chosen: !Bridge.sign-draw;
+                clicked => { Bridge.sign-draw = false; }
+            }
+            ModeButton {
+                label: "Draw";
+                chosen: Bridge.sign-draw;
+                clicked => { Bridge.sign-draw = true; }
+            }
+        }
+        if !Bridge.sign-draw: FieldFrame {
+            height: 38px;
+            focused: name-field.has-focus;
+            name-field := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text <=> Bridge.sign-name;
+                single-line: true;
+                font-size: 15px;
+                vertical-alignment: center;
+                color: Theme.text;
+                selection-background-color: Theme.accent;
+                selection-foreground-color: Theme.on-accent;
+                accessible-label: "Your name. Press Enter to place the signature";
+                accepted => { Bridge.sign-place(self.text); }
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        Bridge.sign-open = false;
+                        return accept;
+                    }
+                    reject
+                }
+                init => { self.focus(); self.select-all(); }
+            }
+        }
+        if !Bridge.sign-draw: VerticalLayout {
+            spacing: 12px;
+            for face[i] in Bridge.sign-fonts: Rectangle {
+                height: 56px;
+                border-radius: 4px;
+                background: face-area.has-hover ? Theme.hover : transparent;
+                border-width: Bridge.sign-font == i ? 2px : 1px;
+                border-color: Bridge.sign-font == i ? Theme.accent : Theme.divider;
+                accessible-role: button;
+                accessible-label: face + " style";
+                accessible-checkable: true;
+                accessible-checked: Bridge.sign-font == i;
+                accessible-action-default => { Bridge.sign-font = i; }
+                Text {
+                    x: 14px;
+                    width: parent.width - 28px;
+                    text: Bridge.sign-name == "" ? face : Bridge.sign-name;
+                    font-family: face;
+                    font-size: 30px;
+                    color: Bridge.sign-colors[Bridge.sign-color];
+                    overflow: elide;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                face-area := TouchArea {
+                    clicked => { Bridge.sign-font = i; }
+                }
+            }
+        }
+        if Bridge.sign-draw: Rectangle {
+            height: self.width * 0.32;
+            border-radius: 4px;
+            background: #ffffff;
+            border-width: 1px;
+            border-color: Theme.divider;
+            clip: true;
+            accessible-role: groupbox;
+            accessible-label: "Drawing area for your signature";
+            Rectangle {
+                x: 16px;
+                y: parent.height * 0.72;
+                width: parent.width - 32px;
+                height: 1px;
+                background: #0000002e;
+            }
+            if Bridge.sign-path == "": Text {
+                text: "Draw your signature here with the mouse, a pen or a finger";
+                color: #00000080;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 1000;
+                viewbox-height: 320;
+                commands: Bridge.sign-path;
+                stroke: Bridge.sign-colors[Bridge.sign-color];
+                stroke-width: 2.5px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                fill: transparent;
+                accessible-role: none;
+            }
+            TouchArea {
+                mouse-cursor: MouseCursor.crosshair;
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                        Bridge.sign-pen(0, self.mouse-x / self.width, self.mouse-y / self.height);
+                    } else if (event.kind == PointerEventKind.up) {
+                        Bridge.sign-pen(2, self.mouse-x / self.width, self.mouse-y / self.height);
+                    }
+                }
+                moved => {
+                    if (self.pressed) {
+                        Bridge.sign-pen(1, self.mouse-x / self.width, self.mouse-y / self.height);
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            Text {
+                text: "Ink";
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            for ink[i] in Bridge.sign-colors: Rectangle {
+                width: 36px;
+                height: 36px;
+                accessible-role: button;
+                accessible-label: Bridge.sign-color-names[i];
+                accessible-checkable: true;
+                accessible-checked: Bridge.sign-color == i;
+                accessible-action-default => { Bridge.sign-color = i; }
+                Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: ink;
+                    border-width: Bridge.sign-color == i ? 3px : 1px;
+                    border-color: Bridge.sign-color == i ? Theme.accent : Theme.divider;
+                }
+                TouchArea {
+                    clicked => { Bridge.sign-color = i; }
+                }
+            }
+        }
+        if Bridge.sign-saved.length > 0: VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: "Used before. Click one to place it.";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                accessible-role: none;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                for saved[i] in Bridge.sign-saved: Rectangle {
+                    width: 104px;
+                    height: 48px;
+                    border-radius: 4px;
+                    background: #ffffff;
+                    border-width: 1px;
+                    border-color: saved-area.has-hover ? Theme.accent : Theme.divider;
+                    accessible-role: button;
+                    accessible-label: "Place saved signature " + (i + 1);
+                    accessible-action-default => { Bridge.sign-use-saved(saved.path); }
+                    Image {
+                        x: 6px;
+                        y: 4px;
+                        width: parent.width - 12px;
+                        height: parent.height - 8px;
+                        source: saved.image;
+                        image-fit: contain;
+                    }
+                    saved-area := TouchArea {
+                        clicked => { Bridge.sign-use-saved(saved.path); }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            if Bridge.sign-draw: SecondaryButton {
+                label: "Clear";
+                clicked => { Bridge.sign-clear(); }
+            }
+            SecondaryButton {
+                label: "Cancel";
+                clicked => { Bridge.sign-open = false; }
+            }
+            PrimaryButton {
+                label: "Place signature";
+                clicked => {
+                    if (Bridge.sign-draw) { Bridge.sign-place-drawn(); } else { Bridge.sign-place(Bridge.sign-name); }
+                }
+            }
+        }
+    }
+}
+
+// Asked before a tab with drawings or highlights closes: they only exist in memory until a copy is saved.
+export component ConfirmDialog inherits Dialog {
+    title: "Save your changes?";
+    card-width: 480px;
+    close => { Bridge.confirm-choice(2); }
+
+    Text {
+        text: Bridge.confirm-text + " Closing without saving discards your highlights, drawings and text.";
+        wrap: word-wrap;
+        color: Theme.text;
+        accessible-role: text;
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 8px;
+        SecondaryButton {
+            label: "Cancel";
+            clicked => { Bridge.confirm-choice(2); }
+        }
+        SecondaryButton {
+            label: "Don't save";
+            clicked => { Bridge.confirm-choice(1); }
+        }
+        SecondaryButton {
+            label: "Save a copy";
+            clicked => { Bridge.confirm-choice(0); }
+        }
+        PrimaryButton {
+            label: "Save";
+            clicked => { Bridge.confirm-choice(3); }
+        }
+    }
+}

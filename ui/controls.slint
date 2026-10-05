@@ -1,0 +1,356 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// The shared building blocks: buttons, text box frames, menu rows and the flyout surface. Change a
+// control here and every screen that uses it follows.
+
+import { Theme, Metrics, Glyph, Tip } from "theme.slint";
+
+// A Fluent icon button. Tools that are switched on fill with the accent; settings that are on
+// tint with it. The label is the accessible name and, after a short hover, the tooltip.
+export component IconButton {
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> toggle;
+    in property <bool> checked;
+    // "fill" paints a checked button with the accent (tools); "tint" washes it (settings).
+    in property <string> checked-style: "fill";
+    in property <bool> accent-glyph;
+    in property <bool> mirrored;
+    in property <length> size: Metrics.button;
+    in property <length> glyph-size: 16px;
+    in property <brush> glyph-color: Theme.text;
+    out property <bool> has-focus: focus.has-focus;
+    out property <bool> hovered: area.has-hover;
+    callback clicked;
+
+    width: root.size;
+    height: root.size;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.toggle;
+    accessible-checked: root.checked;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: focus;
+
+    // Set while this button's tooltip is up. The timer must not assign its own `running`.
+    property <bool> owns-tip;
+    function hide-tip() {
+        if (root.owns-tip) {
+            root.owns-tip = false;
+            Tip.on = false;
+        }
+    }
+    property <bool> filled: root.toggle && root.checked && root.checked-style == "fill";
+    property <bool> tinted: root.toggle && root.checked && root.checked-style == "tint";
+
+    Rectangle {
+        // Round, as in Edge and Chrome.
+        border-radius: min(self.width, self.height) / 2;
+        background: root.filled ? Theme.accent
+            : root.tinted ? (area.has-hover ? Theme.accent.with-alpha(0.28) : Theme.accent.with-alpha(0.18))
+            : area.pressed ? Theme.pressed
+            : area.has-hover ? Theme.hover
+            : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    Glyph {
+        text: root.glyph;
+        font-size: root.glyph-size;
+        color: !root.enabled ? Theme.text-disabled
+            : root.filled ? Theme.on-accent
+            : (root.tinted || root.accent-glyph) ? Theme.accent
+            : root.glyph-color;
+        transform-scale-x: root.mirrored ? -1 : 1;
+    }
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.hide-tip();
+            root.clicked();
+        }
+        changed has-hover => {
+            if (!self.has-hover) { root.hide-tip(); }
+        }
+    }
+    Timer {
+        interval: 400ms;
+        running: area.has-hover && !area.pressed && root.label != "" && !Metrics.touch && !root.owns-tip;
+        triggered => {
+            root.owns-tip = true;
+            Tip.text = root.label;
+            Tip.x = root.absolute-position.x + root.width / 2;
+            Tip.y = root.absolute-position.y + root.height + 6px;
+            Tip.on = true;
+        }
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A text button. The primary one is filled with the accent and marks the main action of a dialog;
+// the others are neutral, with an outline.
+component Button {
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> primary;
+    callback clicked;
+
+    height: Metrics.touch ? 44px : 36px;
+    min-width: row.preferred-width;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    property <brush> ink: root.primary ? Theme.on-accent : Theme.text;
+    Rectangle {
+        border-radius: 4px;
+        background: root.primary
+            ? (area.pressed ? Theme.accent.darker(0.2) : area.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+            : Theme.field;
+        border-width: focus.has-focus ? 2px : root.primary ? 0px : 1px;
+        border-color: focus.has-focus ? Theme.focus : Theme.divider;
+        if !root.primary: Rectangle {
+            border-radius: parent.border-radius;
+            background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : transparent;
+        }
+    }
+    row := HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 8px;
+        alignment: center;
+        if root.glyph != "": Glyph {
+            text: root.glyph;
+            color: root.ink;
+        }
+        Text {
+            text: root.label;
+            font-weight: root.primary ? 600 : 400;
+            vertical-alignment: center;
+            color: root.ink;
+            accessible-role: none;
+        }
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component PrimaryButton inherits Button {
+    primary: true;
+}
+
+export component SecondaryButton inherits Button { }
+
+// The frame of every text box: an outlined field with the accent along the bottom while typing.
+export component FieldFrame inherits Rectangle {
+    in property <bool> focused;
+    border-radius: 4px;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: Theme.field-border;
+    Rectangle {
+        visible: root.focused;
+        y: parent.height - 2px;
+        height: 2px;
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+        background: Theme.accent;
+    }
+    @children
+}
+
+export component LinkButton {
+    in property <string> label;
+    in property <length> font-size: 13px;
+    in property <brush> color: Theme.accent;
+    callback clicked;
+
+    height: label-text.preferred-height + 4px;
+    width: label-text.preferred-width + 8px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    label-text := Text {
+        text: root.label;
+        font-size: root.font-size;
+        color: root.color;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    Rectangle {
+        visible: area.has-hover;
+        x: 4px;
+        y: label-text.y + label-text.height - 3px;
+        width: parent.width - 8px;
+        height: 1px;
+        background: root.color;
+    }
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A row in a menu: a check mark column, the label, and a shortcut hint at the right.
+export component MenuItem {
+    in property <string> label;
+    in property <string> glyph;
+    in property <string> hint;
+    in property <bool> checkable;
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: Metrics.touch ? 40px : 32px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: focus;
+
+    Rectangle {
+        border-radius: 4px;
+        background: !root.enabled ? transparent : area.pressed ? Theme.pressed : area.has-hover || focus.has-focus ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.focus;
+    }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        Glyph {
+            width: root.glyph != "" ? 20px : 16px;
+            // The row's own icon, or a check mark when it is chosen
+            text: root.glyph != "" ? root.glyph : root.checked ? "\u{E73E}" : "";
+            font-size: root.glyph != "" ? 16px : 12px;
+            color: !root.enabled ? Theme.text-disabled : root.checked && root.glyph != "" ? Theme.accent : Theme.text;
+        }
+        Text {
+            text: root.label;
+            font-size: 13px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.enabled ? Theme.text : Theme.text-disabled;
+            accessible-role: none;
+        }
+        if root.hint != "": Text {
+            text: root.hint;
+            font-size: 13px;
+            vertical-alignment: center;
+            color: Theme.text-secondary;
+            accessible-role: none;
+        }
+    }
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component MenuHeading inherits Text {
+    font-size: 12px;
+    color: Theme.text-secondary;
+    height: 28px;
+    vertical-alignment: bottom;
+    accessible-role: text;
+}
+
+export component MenuRule inherits Rectangle {
+    height: 9px;
+    Rectangle {
+        x: 8px;
+        y: 4px;
+        width: parent.width - 16px;
+        height: 1px;
+        background: Theme.separator;
+    }
+}
+
+// The raised surface every menu and flyout shares.
+export component Flyout inherits Rectangle {
+    background: Theme.surface;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.menu-border;
+    drop-shadow-blur: 16px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: #00000024;
+}
+
+export component ToolbarSeparator inherits Rectangle {
+    width: 9px;
+    Rectangle {
+        x: 4px;
+        width: 1px;
+        height: 20px;
+        background: Theme.separator;
+    }
+}
+
+// A key name drawn like a key cap.
+export component Kbd inherits Rectangle {
+    in property <string> text;
+    border-width: 1px;
+    border-color: Theme.divider;
+    border-radius: 4px;
+    width: key.preferred-width + 8px;
+    height: key.preferred-height + 2px;
+    key := Text {
+        text: root.text;
+        color: Theme.text-secondary;
+    }
+}
