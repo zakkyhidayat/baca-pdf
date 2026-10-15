@@ -90,7 +90,7 @@ To pack the portable zip, run `portable\make-zip.ps1`. It builds the program and
 
 To find your way around the code, start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): it says which file to open for which part of the app.
 
-`pdfium.dll` is the prebuilt chromium/8076 build from [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries). Its licenses are in `pdfium\LICENSE` and `pdfium\licenses\`.
+`pdfium.dll` is the prebuilt chromium/8100 build from [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries). Its licenses are in `pdfium\LICENSE` and `pdfium\licenses\`.
 
 ## License
 
