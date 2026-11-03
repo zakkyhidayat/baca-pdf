@@ -1,6 +1,6 @@
 ﻿[package]
 name = "baca-pdf"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Baca PDF: a native PDF reader for Windows 11, built on PDFium"
 license = "GPL-3.0-or-later"
