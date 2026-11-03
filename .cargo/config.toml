@@ -1,8 +1,2 @@
-[source.crates-io]
-replace-with = "rsproxy"
-
-[source.rsproxy]
-registry = "sparse+https://rsproxy.cn/index/"
-
 [env]
 SLINT_STYLE = "fluent"
